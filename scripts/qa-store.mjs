@@ -1,0 +1,35 @@
+import { chromium } from "playwright";
+const browser = await chromium.launch({ args: ["--no-sandbox"] });
+const page = await browser.newPage({ viewport: { width: 1280, height: 720 } });
+const errors = [];
+page.on("pageerror", (e) => errors.push("PAGE: " + e.message));
+page.on("console", (m) => {
+  if (m.type() === "error") errors.push("CON: " + m.text());
+});
+await page.goto("http://127.0.0.1:8080/", { waitUntil: "networkidle", timeout: 30000 });
+await page.waitForTimeout(2500);
+await page.screenshot({ path: "/workspace/screenshots/start-2.png" });
+const btn = page.getByRole("button", { name: /walk the floor/i });
+await btn.click();
+await page.waitForTimeout(2000);
+await page.screenshot({ path: "/workspace/screenshots/play-lobby.png" });
+await page.keyboard.down("KeyW");
+await page.waitForTimeout(1800);
+await page.keyboard.up("KeyW");
+await page.waitForTimeout(400);
+await page.screenshot({ path: "/workspace/screenshots/play-walk.png" });
+await page.mouse.move(640, 360);
+await page.mouse.down();
+await page.mouse.move(820, 360, { steps: 12 });
+await page.mouse.up();
+await page.waitForTimeout(400);
+await page.screenshot({ path: "/workspace/screenshots/play-look.png" });
+const controls = await page.evaluate(() => {
+  const t = window.__controlsTest;
+  if (!t) return null;
+  return { yaw: t.getYaw(), speed: t.getSpeed(), pos: t.getPosition() };
+});
+console.log("CONTROLS", JSON.stringify(controls));
+console.log("ERRORS", JSON.stringify(errors, null, 2));
+console.log("TEXT", (await page.locator("body").innerText()).slice(0, 800));
+await browser.close();

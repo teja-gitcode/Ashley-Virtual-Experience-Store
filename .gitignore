@@ -1,0 +1,9 @@
+node_modules
+.node_modules.lock
+.output
+dist
+.nitro
+.tanstack
+.DS_Store
+*.log
+screenshots
