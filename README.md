@@ -10,5 +10,5 @@ Walkable 3D furniture showroom. Built with React, TanStack Start, and three.js.
 - **B** bag · **M** floor plan
  
 
-The site is at `https://<you>.github.io/<repo>/`. The bag stays in that browser's local storage.
+The site is at `https://teja-gitcode.github.io/Ashley-Virtual-Experience-Store/`.
 
