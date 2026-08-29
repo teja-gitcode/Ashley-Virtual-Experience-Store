@@ -66,7 +66,7 @@ export const ROOMS: {
   { id: "living", label: "Living", hint: "Sofas & tables", spawn: [-8.2, 1.6] },
   { id: "bedroom", label: "Bedroom", hint: "Beds & storage", spawn: [11.4, 1.1] },
   { id: "dining", label: "Dining", hint: "Tables & chairs", spawn: [-5.4, -8.6] },
-  { id: "sleep", label: "Sleep", hint: "Mattress gallery", spawn: [4.2, -8.4] },
+  { id: "sleep", label: "Sleep", hint: "Mattress gallery", spawn: [10, -8.2] },
   { id: "kitchen", label: "Kitchen", hint: "Islands & stools", spawn: [-21.2, -3.2] },
   { id: "kids", label: "Kids", hint: "Twins & storage", spawn: [21.2, 0.2] },
   { id: "office", label: "Office", hint: "Desks & bookcases", spawn: [21.4, -10.2] },
@@ -325,6 +325,18 @@ export const PRODUCTS: Product[] = [
     fabric: "pebble",
   },
   {
+    id: "chime-8",
+    name: "Chime 8-Inch Memory Foam",
+    collection: "Chime",
+    room: "sleep",
+    price: 199,
+    style: "Modern sleep",
+    finish: "Knit cover",
+    blurb: "The slim guest-room mattress. Same Chime foam feel in an eight-inch profile that sits clean on a bunk or a trundle.",
+    kind: "mattress",
+    fabric: "sage",
+  },
+  {
     id: "sleep-hybrid",
     name: "Ashley Sleep 13-Inch Hybrid",
     collection: "Ashley Sleep",
@@ -562,14 +574,18 @@ export const PLACEMENTS: Placement[] = [
   { productId: "bolanburg-chair", x: -9.1, z: -13.45, rot: 0, collideW: 0.5, collideD: 0.5 },
   { productId: "haddigan-buffet", x: -16.4, z: -12.0, rot: Math.PI / 2, collideW: 2.0, collideD: 0.55 },
   { productId: "haddigan-hutch", x: -10.2, z: -18.55, rot: 0, collideW: 1.3, collideD: 0.5 },
-  // Sleep — long side toward the aisle so you walk up to the mattress
-  { productId: "chime-12", x: 6.4, z: -12.2, rot: 0, collideW: 2.15, collideD: 1.15 },
-  { productId: "chime-10", x: 10.5, z: -12.2, rot: 0, collideW: 2.15, collideD: 1.15 },
-  { productId: "sleep-hybrid", x: 14.6, z: -12.2, rot: 0, collideW: 2.15, collideD: 1.15 },
-  // Patio — seating faces back toward the store
+  // Sleep — 2×2 around the door cross (bedroom at x=10 / aisle at z=-12). Unique SKUs only.
+  // Mesh is 2.08 (local X) × 1.08 (local Z); rot π/2 makes them run north–south.
+  { productId: "chime-8", x: 5.4, z: -7.8, rot: Math.PI / 2, collideW: 2.2, collideD: 1.15 },
+  { productId: "chime-10", x: 14.6, z: -7.8, rot: Math.PI / 2, collideW: 2.2, collideD: 1.15 },
+  { productId: "chime-12", x: 5.4, z: -16.2, rot: Math.PI / 2, collideW: 2.2, collideD: 1.15 },
+  { productId: "sleep-hybrid", x: 14.6, z: -16.2, rot: Math.PI / 2, collideW: 2.2, collideD: 1.15 },
+  // Patio — sofas face each other across the table
   { productId: "beachcroft-sofa", x: -7.2, z: -25.4, rot: 0, collideW: 2.3, collideD: 0.95 },
-  { productId: "beachcroft-table", x: -7.2, z: -23.7, rot: 0, collideW: 1.2, collideD: 0.7 },
+  { productId: "beachcroft-table", x: -7.2, z: -23.65, rot: 0, collideW: 1.2, collideD: 0.7 },
+  { productId: "beachcroft-sofa", x: -7.2, z: -21.9, rot: Math.PI, collideW: 2.3, collideD: 0.95 },
   { productId: "palmetto-dining", x: 7.4, z: -25.0, rot: 0, collideW: 2.4, collideD: 1.4 },
+  { productId: "beachcroft-table", x: 7.4, z: -22.7, rot: 0, collideW: 1.2, collideD: 0.7 },
   // Kitchen — hutch back to the west wall
   { productId: "skempton-island", x: -22.1, z: -7.4, rot: 0, collideW: 1.85, collideD: 0.95 },
   { productId: "valebeck-stool", x: -23.0, z: -6.15, rot: Math.PI, collideW: 0.4, collideD: 0.4 },

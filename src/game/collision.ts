@@ -120,8 +120,8 @@ export const INTERIOR_WALLS: WallDef[] = [
   { x: -5.0, z: -4.0, w: 6.6, d: t },
   { x: 5.0, z: -4.0, w: 6.6, d: t },
   { x: 15.0, z: -4.0, w: 6.0, d: t },
-  { x: 20.5, z: -4.0, w: 4.7, d: t },
-  { x: 24.9, z: -4.0, w: 2.5, d: t },
+  { x: 19.85, z: -4.0, w: 3.4, d: t },
+  { x: 25.0, z: -4.0, w: 2.3, d: t },
 
   // Aisle walls x=±1.7 with doorways
   { x: -1.7, z: 2.65, w: t, d: 2.7 },
@@ -146,8 +146,8 @@ export const LOT_CURBS: WallDef[] = [
 ];
 
 export const LOT_OBSTACLES: Rect[] = [
-  rect(-8.4, 25.2, 2.0, 4.5),
-  rect(8.4, 25.2, 2.0, 4.5),
+  rect(-9.5, 25.2, 1.95, 4.3),
+  rect(9.5, 25.2, 1.95, 4.3),
   rect(-11.2, 21.35, 0.7, 0.45),
 ];
 

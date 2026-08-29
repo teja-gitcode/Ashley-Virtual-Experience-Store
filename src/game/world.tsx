@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { useEffect, useMemo } from "react";
 import * as THREE from "three";
 import { useTexture } from "@react-three/drei";
 import { geo } from "./geo";
@@ -72,11 +72,13 @@ function Sign({
   sub,
   position,
   rotationY = 0,
+  size = [2.2, 0.55],
 }: {
   text: string;
   sub: string;
   position: [number, number, number];
   rotationY?: number;
+  size?: [number, number];
 }) {
   const tex = useMemo(() => {
     const c = document.createElement("canvas");
@@ -87,6 +89,7 @@ function Sign({
     ctx.fillRect(0, 0, 1024, 256);
     ctx.fillStyle = "#f48120";
     ctx.fillRect(0, 0, 18, 256);
+    ctx.fillRect(1006, 0, 18, 256);
     ctx.fillStyle = "#f4efe6";
     ctx.font = "600 92px Outfit, sans-serif";
     ctx.fillText(text, 56, 120);
@@ -99,42 +102,143 @@ function Sign({
     return t;
   }, [text, sub]);
   return (
-    <mesh position={position} rotation={[0, rotationY, 0]}>
-      <planeGeometry args={[2.6, 0.65]} />
-      <meshBasicMaterial map={tex} />
-    </mesh>
+    <group position={position} rotation={[0, rotationY, 0]} userData={{ camSkip: true }}>
+      <mesh position={[0, 0, 0.012]}>
+        <planeGeometry args={size} />
+        <meshBasicMaterial map={tex} />
+      </mesh>
+      <mesh position={[0, 0, -0.012]} rotation={[0, Math.PI, 0]}>
+        <planeGeometry args={size} />
+        <meshBasicMaterial map={tex} />
+      </mesh>
+    </group>
   );
+}
+
+function carMat(color: string, extra?: THREE.MeshStandardMaterialParameters) {
+  return new THREE.MeshStandardMaterial({
+    color,
+    roughness: 0.38,
+    metalness: 0.22,
+    ...extra,
+  });
 }
 
 function ParkedCar({
   p,
   rotY,
-  body,
-  cabin,
-  wheel,
-  glass,
+  paint,
+  kind = "sedan",
 }: {
   p: [number, number, number];
   rotY: number;
-  body: THREE.Material;
-  cabin: THREE.Material;
-  wheel: THREE.Material;
-  glass: THREE.Material;
+  paint: string;
+  kind?: "sedan" | "hatch";
 }) {
+  const mats = useMemo(() => {
+    const body = carMat(paint, { roughness: 0.28, metalness: 0.34 });
+    const trim = carMat("#1c1e22", { roughness: 0.55, metalness: 0.2 });
+    const rubber = carMat("#141416", { roughness: 0.92, metalness: 0.05 });
+    const hub = carMat("#d7dbe2", { roughness: 0.32, metalness: 0.65 });
+    const glass = new THREE.MeshStandardMaterial({
+      color: "#c8eefe",
+      emissive: "#7ec8ee",
+      emissiveIntensity: 0.35,
+      roughness: 0.08,
+      metalness: 0.12,
+      transparent: true,
+      opacity: 0.72,
+    });
+    const light = new THREE.MeshStandardMaterial({
+      color: "#fff6d2",
+      emissive: "#ffe9a8",
+      emissiveIntensity: 1.15,
+      roughness: 0.35,
+    });
+    const tail = new THREE.MeshStandardMaterial({
+      color: "#c81f24",
+      emissive: "#ff2a2a",
+      emissiveIntensity: 0.9,
+      roughness: 0.4,
+    });
+    return { body, trim, rubber, hub, glass, light, tail };
+  }, [paint]);
+
+  useEffect(() => {
+    return () => {
+      for (const m of Object.values(mats)) m.dispose();
+    };
+  }, [mats]);
+
+  const hatch = kind === "hatch";
+  const cabinZ = hatch ? -0.22 : 0.18;
+  const cabinD = hatch ? 2.55 : 1.88;
+
   return (
-    <group position={p} rotation={[0, rotY, 0]}>
-      <mesh geometry={geo.box} position={[0, 0.42, 0]} scale={[1.85, 0.5, 4.15]} material={body} castShadow />
-      <mesh geometry={geo.box} position={[0, 0.9, -0.28]} scale={[1.68, 0.46, 2.15]} material={cabin} castShadow />
-      <mesh geometry={geo.box} position={[0, 0.92, 0.72]} scale={[1.55, 0.32, 0.04]} material={glass} />
+    <group position={p} rotation={[0, rotY, 0]} userData={{ camSkip: true }}>
+      <mesh geometry={geo.box} position={[0, 0.2, 0]} scale={[1.62, 0.14, 3.85]} material={mats.trim} castShadow />
+      <mesh geometry={geo.box} position={[0, 0.55, 0]} scale={[1.8, 0.48, 4.02]} material={mats.body} castShadow />
+      <mesh geometry={geo.box} position={[0, 0.78, 1.28]} scale={[1.72, 0.2, 1.05]} material={mats.body} castShadow />
+      <mesh
+        geometry={geo.box}
+        position={[0, 1.12, cabinZ]}
+        scale={[1.68, 0.58, cabinD]}
+        material={mats.trim}
+        castShadow
+      />
+      <mesh
+        geometry={geo.box}
+        position={[0, 1.44, cabinZ - (hatch ? 0.08 : 0.04)]}
+        scale={[1.52, 0.1, hatch ? 2.28 : 1.62]}
+        material={mats.body}
+        castShadow
+      />
+      {!hatch ? (
+        <mesh geometry={geo.box} position={[0, 0.78, -1.42]} scale={[1.72, 0.22, 0.88]} material={mats.body} castShadow />
+      ) : (
+        <mesh geometry={geo.box} position={[0, 0.78, -1.72]} scale={[1.7, 0.2, 0.42]} material={mats.body} castShadow />
+      )}
+
+      <mesh geometry={geo.box} position={[0, 0.36, 2.06]} scale={[1.78, 0.26, 0.18]} material={mats.trim} castShadow />
+      <mesh geometry={geo.box} position={[0, 0.36, -2.06]} scale={[1.78, 0.26, 0.18]} material={mats.trim} castShadow />
+      <mesh geometry={geo.box} position={[0, 0.48, 2.14]} scale={[0.7, 0.14, 0.06]} material={mats.trim} />
+      <mesh geometry={geo.box} position={[-0.56, 0.52, 2.16]} scale={[0.36, 0.15, 0.08]} material={mats.light} />
+      <mesh geometry={geo.box} position={[0.56, 0.52, 2.16]} scale={[0.36, 0.15, 0.08]} material={mats.light} />
+      <mesh geometry={geo.box} position={[-0.58, 0.52, -2.16]} scale={[0.4, 0.14, 0.08]} material={mats.tail} />
+      <mesh geometry={geo.box} position={[0.58, 0.52, -2.16]} scale={[0.4, 0.14, 0.08]} material={mats.tail} />
+
+      <mesh
+        geometry={geo.box}
+        position={[0, 1.14, hatch ? 1.05 : 1.08]}
+        rotation={[-0.48, 0, 0]}
+        scale={[1.5, 0.48, 0.05]}
+        material={mats.glass}
+      />
+      <mesh
+        geometry={geo.box}
+        position={[0, 1.16, hatch ? -1.12 : -0.78]}
+        rotation={[hatch ? 0.38 : 0.48, 0, 0]}
+        scale={[1.5, hatch ? 0.52 : 0.4, 0.05]}
+        material={mats.glass}
+      />
+      <mesh geometry={geo.box} position={[-0.85, 1.14, cabinZ]} scale={[0.05, 0.4, cabinD - 0.42]} material={mats.glass} />
+      <mesh geometry={geo.box} position={[0.85, 1.14, cabinZ]} scale={[0.05, 0.4, cabinD - 0.42]} material={mats.glass} />
+
+      <mesh geometry={geo.box} position={[-0.98, 1.08, 0.62]} scale={[0.12, 0.12, 0.2]} material={mats.trim} />
+      <mesh geometry={geo.box} position={[0.98, 1.08, 0.62]} scale={[0.12, 0.12, 0.2]} material={mats.trim} />
+
       {(
         [
-          [-0.78, 0.22, 1.35],
-          [0.78, 0.22, 1.35],
-          [-0.78, 0.22, -1.35],
-          [0.78, 0.22, -1.35],
+          [-0.88, 0.34, 1.18],
+          [0.88, 0.34, 1.18],
+          [-0.88, 0.34, -1.18],
+          [0.88, 0.34, -1.18],
         ] as [number, number, number][]
       ).map((wp, i) => (
-        <mesh key={i} geometry={geo.cyl} position={wp} rotation={[0, 0, Math.PI / 2]} scale={[0.22, 0.14, 0.22]} material={wheel} />
+        <group key={i} position={wp} rotation={[0, 0, Math.PI / 2]}>
+          <mesh geometry={geo.cyl} scale={[0.34, 0.2, 0.34]} material={mats.rubber} castShadow />
+          <mesh geometry={geo.cyl} scale={[0.17, 0.21, 0.17]} material={mats.hub} />
+        </group>
       ))}
     </group>
   );
@@ -251,8 +355,9 @@ function Storefront({ mats }: { mats: StoreMats }) {
         <Sign text="ASHLEY" sub="Experience store" position={[0, 2.18, 0.12]} />
       </group>
 
-      <ParkedCar p={[-8.4, 0, 25.2]} rotY={0} body={mats.navy} cabin={mats.charcoal} wheel={mats.blackMetal} glass={mats.glass} />
-      <ParkedCar p={[8.4, 0, 25.2]} rotY={Math.PI} body={mats.rust} cabin={mats.charcoal} wheel={mats.blackMetal} glass={mats.glass} />
+      {/* Stall bays are 2.2m wide (lines at ±6.2/±8.4/±10.6). Sit in the bay, nose to the south end-cap. */}
+      <ParkedCar p={[-9.5, 0, 25.2]} rotY={0} paint="#f3f1ea" kind="sedan" />
+      <ParkedCar p={[9.5, 0, 25.2]} rotY={0} paint="#f48120" kind="hatch" />
 
       {[-10.6, -8.4, -6.2, 6.2, 8.4, 10.6].map((x) => (
         <mesh key={`stall-${x}`} geometry={geo.box} position={[x, 0.012, 25.2]} scale={[0.06, 0.02, 4.6]} material={mats.stallPaint} />
@@ -390,7 +495,7 @@ export function StoreWorld({ mats }: { mats: StoreMats }) {
       <Floor p={[-18.15, 0.012, -12]} s={[0.42, 0.02, 2.2]} m={mats.oak} />
       <Floor p={[18.15, 0.012, 0.5]} s={[0.42, 0.02, 2.2]} m={mats.oak} />
       <Floor p={[18.15, 0.012, -12]} s={[0.42, 0.02, 2.2]} m={mats.oak} />
-      <Floor p={[22.2, 0.012, -4]} s={[2.4, 0.02, 0.42]} m={mats.oak} />
+      <Floor p={[22.7, 0.012, -4]} s={[2.5, 0.02, 0.42]} m={mats.oak} />
 
       <Floor p={[0, -0.05, -25]} s={[28.5, 0.1, 9.8]} m={mats.deck} />
       <Floor p={[0, -0.14, -25]} s={[40, 0.06, 14]} m={mats.grass} />
@@ -460,15 +565,24 @@ export function StoreWorld({ mats }: { mats: StoreMats }) {
         size={[4.8, 2.4]}
       />
 
-      <Sign text="LIVING" sub="Sofas · tables · media" position={[-10.2, 3.35, 3.84]} />
-      <Sign text="BEDROOM" sub="Beds · storage" position={[10.2, 3.35, 3.84]} />
-      <Sign text="DINING" sub="Tables · seating" position={[-10.2, 3.35, -3.84]} rotationY={Math.PI} />
-      <Sign text="SLEEP" sub="Mattress gallery" position={[10.2, 3.35, -3.84]} rotationY={Math.PI} />
-      <Sign text="KITCHEN" sub="Islands · stools" position={[-22.2, 3.35, 3.84]} />
-      <Sign text="KIDS" sub="Beds · storage" position={[22.2, 3.35, 3.84]} />
-      <Sign text="OFFICE" sub="Desks · bookcases" position={[22.2, 3.35, -3.84]} rotationY={Math.PI} />
-      <Sign text="PATIO" sub="Outdoor living" position={[0, 3.2, -19.98]} rotationY={Math.PI} />
+      {/* Door headers — on the room doors themselves, readable both ways. */}
+      <Sign text="LIVING" sub="Sofas · tables · media" position={[-10, 3.15, 4.18]} />
+      <Sign text="BEDROOM" sub="Beds · storage" position={[10, 3.15, 4.18]} />
+      <Sign text="DINING" sub="Tables · seating" position={[-10, 3.15, -3.82]} />
+      <Sign text="SLEEP" sub="Mattress gallery" position={[10, 3.15, -3.82]} />
+      <Sign text="KITCHEN" sub="Islands · stools" position={[-17.95, 3.15, 0.4]} rotationY={Math.PI / 2} />
+      <Sign text="KITCHEN" sub="Islands · stools" position={[-17.95, 3.15, -12]} rotationY={Math.PI / 2} />
+      <Sign text="KIDS" sub="Beds · storage" position={[17.95, 3.15, 0.5]} rotationY={Math.PI / 2} />
+      <Sign text="OFFICE" sub="Desks · bookcases" position={[22.7, 3.15, -3.82]} />
+      <Sign text="PATIO" sub="Outdoor living" position={[0, 3.15, -19.82]} />
       <Sign text="ASHLEY" sub="Experience store" position={[0, 3.5, 15.98]} rotationY={Math.PI} />
+
+      {/* Walkway blades — only rooms that open onto the oak aisle, hung in those openings.
+          Kitchen / Kids stay off the aisle; they open from side rooms, not this corridor. */}
+      <Sign text="LIVING" sub="Sofas · tables · media" position={[-1.58, 3.15, 0]} rotationY={Math.PI / 2} size={[1.7, 0.5]} />
+      <Sign text="BEDROOM" sub="Beds · storage" position={[1.58, 3.15, 0]} rotationY={Math.PI / 2} size={[1.7, 0.5]} />
+      <Sign text="DINING" sub="Tables · seating" position={[-1.58, 3.15, -12]} rotationY={Math.PI / 2} size={[1.7, 0.5]} />
+      <Sign text="SLEEP" sub="Mattress gallery" position={[1.58, 3.15, -12]} rotationY={Math.PI / 2} size={[1.7, 0.5]} />
       <Storefront mats={mats} />
 
       <group position={[0, 0, 8.6]}>
@@ -520,7 +634,7 @@ export function StoreWorld({ mats }: { mats: StoreMats }) {
       <group position={[24.4, 0, -13.6]}>
         <TableLamp brass={mats.brass} shade={mats.shade} />
       </group>
-      <group position={[-15.6, 0, 2.5]}>
+      <group position={[-8.5, 0, 3.2]}>
         <Plant pot={mats.terracotta} leaf={mats.leaf} leaf2={mats.leaf2} />
       </group>
       <group position={[-15.6, 0, -1.8]}>
@@ -538,6 +652,10 @@ export function StoreWorld({ mats }: { mats: StoreMats }) {
       <group position={[12.6, 0, -27.2]}>
         <Plant pot={mats.terracotta} leaf={mats.leaf} leaf2={mats.leaf2} />
       </group>
+      <group position={[-10.6, 0, -23.6]}>
+        <Plant pot={mats.terracotta} leaf={mats.leaf} leaf2={mats.leaf2} />
+      </group>
+
       <group position={[5.2, 0, 13.4]}>
         <Plant pot={mats.terracotta} leaf={mats.leaf} leaf2={mats.leaf2} />
       </group>

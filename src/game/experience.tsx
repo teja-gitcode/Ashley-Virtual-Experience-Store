@@ -7,6 +7,7 @@ import { Player } from "./player";
 import { StoreWorld } from "./world";
 import { HostStaff } from "./staff";
 import { Picker } from "./picker";
+import { PresenceGate } from "./presence-gate";
 import { useStoreMaterials } from "./materials";
 import { StoreChrome } from "@/components/store-chrome";
 import { useExperience } from "@/lib/experience-state";
@@ -45,6 +46,7 @@ function Scene() {
       <StoreWorld mats={mats} />
       <HostStaff mats={mats} />
       <Player mats={mats} />
+      <PresenceGate />
       <Picker />
       <IfInSessionMode>
         <TeleportTarget

@@ -3,6 +3,8 @@ import { useEffect, useMemo, useRef } from "react";
 import * as THREE from "three";
 import { useXR, useXRControllerLocomotion, XROrigin } from "@react-three/xr";
 import { useExperience } from "@/lib/experience-state";
+import { sendMyPose, usePresence } from "@/lib/presence";
+import { footstep, resumeAudio } from "@/lib/audio";
 import { PLACEMENTS, roomAt } from "@/lib/catalog";
 import { buildWalls, LOT_OBSTACLES, rect, resolveMove, unstick, type Rect } from "./collision";
 import { geo } from "./geo";
@@ -19,6 +21,11 @@ declare global {
       getYaw: () => number;
       getSpeed: () => number;
       getPosition: () => { x: number; y: number; z: number };
+      getCamera: () => { x: number; y: number; z: number };
+      setPitch: (p: number) => void;
+      setYaw: (y: number) => void;
+      teleport: (x: number, z: number) => void;
+      setZoom: (d: number) => void;
       setKeys?: (codes: string[]) => void;
       setSteer?: (v: number) => void;
     };
@@ -181,6 +188,23 @@ export function Player({ mats }: { mats: StoreMats }) {
       getYaw: () => camYaw.current,
       getSpeed: () => speed.current,
       getPosition: () => ({ x: pos.current.x, y: pos.current.y, z: pos.current.z }),
+      getCamera: () => ({
+        x: camera.position.x,
+        y: camera.position.y,
+        z: camera.position.z,
+      }),
+      setPitch: (p) => {
+        camPitch.current = THREE.MathUtils.clamp(p, 0.04, 0.72);
+      },
+      setYaw: (y) => {
+        camYaw.current = y;
+      },
+      teleport: (x, z) => {
+        useExperience.getState().requestTeleport(x, z);
+      },
+      setZoom: (d) => {
+        useExperience.getState().setZoom(d);
+      },
       setKeys: (codes) => {
         keys.clear();
         for (const c of codes) keys.add(c);
@@ -195,7 +219,7 @@ export function Player({ mats }: { mats: StoreMats }) {
     return () => {
       delete window.__controlsTest;
     };
-  }, []);
+  }, [camera]);
 
   useFrame((state, delta) => {
     const dt = Math.min(delta, 0.1);
@@ -284,6 +308,10 @@ export function Player({ mats }: { mats: StoreMats }) {
       pos.current.z = THREE.MathUtils.clamp(next.z, -29.4, 30.5);
       const target = Math.atan2(-mx, -mz);
       bodyYaw.current = THREE.MathUtils.damp(bodyYaw.current, target, 10, dt);
+      if (speed.current > 0.5 && !st.muted) {
+        resumeAudio();
+        footstep();
+      }
     } else {
       speed.current *= Math.max(0, 1 - dt * 8);
     }
@@ -293,6 +321,13 @@ export function Player({ mats }: { mats: StoreMats }) {
     if (Math.abs(pos.current.x - st.px) + Math.abs(pos.current.z - st.pz) > 0.28) {
       useExperience.getState().setPos(pos.current.x, pos.current.z);
     }
+    sendMyPose({
+      x: pos.current.x,
+      z: pos.current.z,
+      yaw: bodyYaw.current,
+      walk: speed.current > 0.4 ? 1 : 0,
+      name: usePresence.getState().guestName,
+    });
 
     if (xrOrigin.current) {
       xrOrigin.current.position.set(pos.current.x, 0, pos.current.z);
@@ -354,9 +389,24 @@ export function Player({ mats }: { mats: StoreMats }) {
             o = o.parent;
           }
           if (skip) continue;
-          if (h.face && Math.abs(h.face.normal.y) > 0.65) continue;
+          // Skip floors only. Ceilings (normal.y < 0) must stop the camera
+          // or zoom punches through the roof.
+          const ny = h.normal?.y ?? h.face?.normal.y ?? 0;
+          if (ny > 0.65) continue;
           desired.current.copy(lookAt.current).addScaledVector(camDir.current, Math.max(0.42, h.distance - 0.3));
           break;
+        }
+      }
+      // Roof slab sits at y=4.5. Pull back along the look ray so zoom never
+      // sits above the building.
+      const roof = 4.18;
+      if (desired.current.y > roof) {
+        const fromY = lookAt.current.y;
+        const span = desired.current.y - fromY;
+        if (span > 0.05) {
+          desired.current.lerpVectors(lookAt.current, desired.current, (roof - fromY) / span);
+        } else {
+          desired.current.y = roof;
         }
       }
       camera.position.lerp(desired.current, 1 - Math.exp(-dt * 8));

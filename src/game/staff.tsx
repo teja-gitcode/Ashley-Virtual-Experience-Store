@@ -2,6 +2,7 @@ import { useFrame } from "@react-three/fiber";
 import { useEffect, useMemo, useRef } from "react";
 import * as THREE from "three";
 import { useExperience } from "@/lib/experience-state";
+import { alexGreet, resumeAudio } from "@/lib/audio";
 import { HOST_GREET, HOST_IDLE } from "@/lib/host";
 import { buildWalls, resolveMove } from "./collision";
 import { geo } from "./geo";
@@ -117,6 +118,10 @@ export function HostStaff({ mats }: { mats: StoreMats }) {
     if (ready && !openedOnce.current && !st.hostMenuOpen && !st.selectedId && !st.catalogOpen && !st.bagOpen) {
       openedOnce.current = true;
       st.openHostMenu();
+      if (!st.muted) {
+        resumeAudio();
+        alexGreet();
+      }
     }
     if (!nearby && dist > FAR) openedOnce.current = false;
 
