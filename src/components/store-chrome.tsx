@@ -16,8 +16,11 @@ import {
   Sofa,
   Sun,
   Trees,
+  Users,
   Utensils,
   X,
+  Volume2,
+  VolumeX,
   ZoomIn,
   ZoomOut,
 } from "lucide-react";
@@ -44,7 +47,9 @@ import { HOST_NAME, leadToProduct, leadToRoom } from "@/lib/host";
 import { cn } from "@/lib/cn";
 import { isCoarsePointer, requestOrientationPermission } from "@/lib/handheld";
 import { setStickPointer } from "@/lib/stick";
+import { usePresence } from "@/lib/presence";
 import { xrStore } from "@/game/xr-store";
+import { resumeAudio, setMuted } from "@/lib/audio";
 
 const ROOM_ICON: Record<RoomId, typeof Sofa> = {
   lot: MapPin,
@@ -69,6 +74,11 @@ export function StoreChrome() {
   const hostMenuOpen = useExperience((s) => s.hostMenuOpen);
   const room = useExperience((s) => s.room);
   const bag = useExperience((s) => s.bag);
+  const muted = useExperience((s) => s.muted);
+
+  useEffect(() => {
+    setMuted(muted);
+  }, [muted]);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -125,6 +135,39 @@ export function StoreChrome() {
   );
 }
 
+function GuestNameField() {
+  const name = usePresence((s) => s.guestName);
+  return (
+    <label className="mt-5 block max-w-xs">
+      <span className="text-[11px] font-semibold uppercase tracking-[0.16em] text-mist">
+        Your name on the floor
+      </span>
+      <input
+        value={name}
+        maxLength={18}
+        onChange={(e) => usePresence.getState().setGuestName(e.target.value)}
+        className="mt-1 w-full rounded-md border border-paper/20 bg-navy-2/80 px-3 py-2 text-sm text-paper outline-none placeholder:text-mist"
+        placeholder="Guest"
+      />
+    </label>
+  );
+}
+
+function VisitorCount() {
+  const n = usePresence((s) => s.peers.length);
+  const connected = usePresence((s) => s.connected);
+  return (
+    <p className="mt-1 flex items-center gap-1 text-[11px] uppercase tracking-[0.16em] text-mist">
+      <Users className="size-3" />
+      {connected
+        ? n === 0
+          ? "Just you"
+          : `${n} other${n === 1 ? "" : "s"} here`
+        : "Solo floor"}
+    </p>
+  );
+}
+
 function StartOverlay({ onEnter }: { onEnter: () => void }) {
   const begin = () => {
     if (useExperience.getState().phase === "play") return;
@@ -160,8 +203,10 @@ function StartOverlay({ onEnter }: { onEnter: () => void }) {
         <p className="mt-5 max-w-md text-base leading-relaxed text-mist">
           Walk a full showroom — living, bedroom, dining, kitchen, kids, office,
           sleep, and patio — styled the way the floor is meant to be shopped.
-          Tap any piece for the tag. Hunt the shelves for hidden coupons.
+          Tap any piece for the tag. Hunt the shelves for hidden coupons. Other
+          visitors show up as shoppers on the floor.
         </p>
+        <GuestNameField />
         <div className="mt-8 flex flex-wrap items-center gap-3">
           <button
             type="button"
@@ -212,6 +257,7 @@ function TopBar({
             <MapPin className="size-3" />
             {roomMeta?.label ?? "Gallery"}
           </p>
+          <VisitorCount />
         </div>
       </div>
       <div className="flex items-center gap-2">
@@ -929,6 +975,29 @@ function VrLaunch({
   );
 }
 
+function MuteToggle() {
+  const muted = useExperience((s) => s.muted);
+  return (
+    <button
+      type="button"
+      title={muted ? "Unmute" : "Mute"}
+      aria-label={muted ? "Unmute" : "Mute"}
+      onClick={() => {
+        useExperience.getState().toggleMute();
+        const next = useExperience.getState().muted;
+        setMuted(next);
+        if (!next) resumeAudio();
+      }}
+      className={cn(
+        "grid size-10 place-items-center rounded-md",
+        muted ? "text-paper hover:bg-navy-3" : "bg-orange text-navy",
+      )}
+    >
+      {muted ? <VolumeX className="size-4" /> : <Volume2 className="size-4" />}
+    </button>
+  );
+}
+
 function GyroToggle() {
   const gyro = useExperience((s) => s.gyro);
   const [touch, setTouch] = useState(false);
@@ -1025,6 +1094,7 @@ function ViewControls() {
         >
           <Eye className="size-4" />
         </button>
+        <MuteToggle />
         <GyroToggle />
         <VrLaunch icon />
         <button

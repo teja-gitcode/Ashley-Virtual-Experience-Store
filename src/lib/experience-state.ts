@@ -43,6 +43,7 @@ type ExperienceState = {
   firstPerson: boolean;
   dusk: boolean;
   gyro: boolean;
+  muted: boolean;
   px: number;
   pz: number;
   hostMenuOpen: boolean;
@@ -74,6 +75,7 @@ type ExperienceState = {
   toggleDusk: () => void;
   setGyro: (v: boolean) => void;
   toggleGyro: () => void;
+  toggleMute: () => void;
   setPos: (x: number, z: number) => void;
   openHostMenu: () => void;
   closeHostMenu: () => void;
@@ -111,6 +113,7 @@ export const useExperience = create<ExperienceState>()(
       firstPerson: false,
       dusk: false,
       gyro: false,
+      muted: false,
       px: 0,
       pz: 23.5,
       hostMenuOpen: false,
@@ -201,6 +204,11 @@ export const useExperience = create<ExperienceState>()(
       toggleDusk: () => set((s) => ({ dusk: !s.dusk })),
       setGyro: (v) => set({ gyro: v }),
       toggleGyro: () => set((s) => ({ gyro: !s.gyro })),
+      toggleMute: () =>
+        set((s) => {
+          const muted = !s.muted;
+          return { muted };
+        }),
       setPos: (x, z) => set({ px: x, pz: z }),
       openHostMenu: () =>
         set({
@@ -230,7 +238,13 @@ export const useExperience = create<ExperienceState>()(
     }),
     {
       name: "ashley-experience-bag",
-      partialize: (s) => ({ bag: s.bag, dusk: s.dusk, camDist: s.camDist, coupons: s.coupons }),
+      partialize: (s) => ({
+        bag: s.bag,
+        dusk: s.dusk,
+        camDist: s.camDist,
+        coupons: s.coupons,
+        muted: s.muted,
+      }),
       merge: (persisted, current) => {
         const p = (persisted ?? {}) as Partial<ExperienceState>;
         return {

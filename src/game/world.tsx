@@ -72,11 +72,13 @@ function Sign({
   sub,
   position,
   rotationY = 0,
+  size = [2.2, 0.55],
 }: {
   text: string;
   sub: string;
   position: [number, number, number];
   rotationY?: number;
+  size?: [number, number];
 }) {
   const tex = useMemo(() => {
     const c = document.createElement("canvas");
@@ -87,6 +89,7 @@ function Sign({
     ctx.fillRect(0, 0, 1024, 256);
     ctx.fillStyle = "#f48120";
     ctx.fillRect(0, 0, 18, 256);
+    ctx.fillRect(1006, 0, 18, 256);
     ctx.fillStyle = "#f4efe6";
     ctx.font = "600 92px Outfit, sans-serif";
     ctx.fillText(text, 56, 120);
@@ -99,10 +102,16 @@ function Sign({
     return t;
   }, [text, sub]);
   return (
-    <mesh position={position} rotation={[0, rotationY, 0]}>
-      <planeGeometry args={[2.6, 0.65]} />
-      <meshBasicMaterial map={tex} />
-    </mesh>
+    <group position={position} rotation={[0, rotationY, 0]} userData={{ camSkip: true }}>
+      <mesh position={[0, 0, 0.012]}>
+        <planeGeometry args={size} />
+        <meshBasicMaterial map={tex} />
+      </mesh>
+      <mesh position={[0, 0, -0.012]} rotation={[0, Math.PI, 0]}>
+        <planeGeometry args={size} />
+        <meshBasicMaterial map={tex} />
+      </mesh>
+    </group>
   );
 }
 
@@ -390,7 +399,7 @@ export function StoreWorld({ mats }: { mats: StoreMats }) {
       <Floor p={[-18.15, 0.012, -12]} s={[0.42, 0.02, 2.2]} m={mats.oak} />
       <Floor p={[18.15, 0.012, 0.5]} s={[0.42, 0.02, 2.2]} m={mats.oak} />
       <Floor p={[18.15, 0.012, -12]} s={[0.42, 0.02, 2.2]} m={mats.oak} />
-      <Floor p={[22.2, 0.012, -4]} s={[2.4, 0.02, 0.42]} m={mats.oak} />
+      <Floor p={[22.7, 0.012, -4]} s={[2.5, 0.02, 0.42]} m={mats.oak} />
 
       <Floor p={[0, -0.05, -25]} s={[28.5, 0.1, 9.8]} m={mats.deck} />
       <Floor p={[0, -0.14, -25]} s={[40, 0.06, 14]} m={mats.grass} />
@@ -460,15 +469,24 @@ export function StoreWorld({ mats }: { mats: StoreMats }) {
         size={[4.8, 2.4]}
       />
 
-      <Sign text="LIVING" sub="Sofas · tables · media" position={[-10.2, 3.35, 3.84]} />
-      <Sign text="BEDROOM" sub="Beds · storage" position={[10.2, 3.35, 3.84]} />
-      <Sign text="DINING" sub="Tables · seating" position={[-10.2, 3.35, -3.84]} rotationY={Math.PI} />
-      <Sign text="SLEEP" sub="Mattress gallery" position={[10.2, 3.35, -3.84]} rotationY={Math.PI} />
-      <Sign text="KITCHEN" sub="Islands · stools" position={[-22.2, 3.35, 3.84]} />
-      <Sign text="KIDS" sub="Beds · storage" position={[22.2, 3.35, 3.84]} />
-      <Sign text="OFFICE" sub="Desks · bookcases" position={[22.2, 3.35, -3.84]} rotationY={Math.PI} />
-      <Sign text="PATIO" sub="Outdoor living" position={[0, 3.2, -19.98]} rotationY={Math.PI} />
+      {/* Door headers — on the room doors themselves, readable both ways. */}
+      <Sign text="LIVING" sub="Sofas · tables · media" position={[-10, 3.15, 4.18]} />
+      <Sign text="BEDROOM" sub="Beds · storage" position={[10, 3.15, 4.18]} />
+      <Sign text="DINING" sub="Tables · seating" position={[-10, 3.15, -3.82]} />
+      <Sign text="SLEEP" sub="Mattress gallery" position={[10, 3.15, -3.82]} />
+      <Sign text="KITCHEN" sub="Islands · stools" position={[-17.95, 3.15, 0.4]} rotationY={Math.PI / 2} />
+      <Sign text="KITCHEN" sub="Islands · stools" position={[-17.95, 3.15, -12]} rotationY={Math.PI / 2} />
+      <Sign text="KIDS" sub="Beds · storage" position={[17.95, 3.15, 0.5]} rotationY={Math.PI / 2} />
+      <Sign text="OFFICE" sub="Desks · bookcases" position={[22.7, 3.15, -3.82]} />
+      <Sign text="PATIO" sub="Outdoor living" position={[0, 3.15, -19.82]} />
       <Sign text="ASHLEY" sub="Experience store" position={[0, 3.5, 15.98]} rotationY={Math.PI} />
+
+      {/* Walkway blades — only rooms that open onto the oak aisle, hung in those openings.
+          Kitchen / Kids stay off the aisle; they open from side rooms, not this corridor. */}
+      <Sign text="LIVING" sub="Sofas · tables · media" position={[-1.58, 3.15, 0]} rotationY={Math.PI / 2} size={[1.7, 0.5]} />
+      <Sign text="BEDROOM" sub="Beds · storage" position={[1.58, 3.15, 0]} rotationY={Math.PI / 2} size={[1.7, 0.5]} />
+      <Sign text="DINING" sub="Tables · seating" position={[-1.58, 3.15, -12]} rotationY={Math.PI / 2} size={[1.7, 0.5]} />
+      <Sign text="SLEEP" sub="Mattress gallery" position={[1.58, 3.15, -12]} rotationY={Math.PI / 2} size={[1.7, 0.5]} />
       <Storefront mats={mats} />
 
       <group position={[0, 0, 8.6]}>
@@ -520,7 +538,7 @@ export function StoreWorld({ mats }: { mats: StoreMats }) {
       <group position={[24.4, 0, -13.6]}>
         <TableLamp brass={mats.brass} shade={mats.shade} />
       </group>
-      <group position={[-15.6, 0, 2.5]}>
+      <group position={[-8.5, 0, 3.2]}>
         <Plant pot={mats.terracotta} leaf={mats.leaf} leaf2={mats.leaf2} />
       </group>
       <group position={[-15.6, 0, -1.8]}>
@@ -538,6 +556,10 @@ export function StoreWorld({ mats }: { mats: StoreMats }) {
       <group position={[12.6, 0, -27.2]}>
         <Plant pot={mats.terracotta} leaf={mats.leaf} leaf2={mats.leaf2} />
       </group>
+      <group position={[-10.6, 0, -23.6]}>
+        <Plant pot={mats.terracotta} leaf={mats.leaf} leaf2={mats.leaf2} />
+      </group>
+
       <group position={[5.2, 0, 13.4]}>
         <Plant pot={mats.terracotta} leaf={mats.leaf} leaf2={mats.leaf2} />
       </group>
