@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { useEffect, useMemo } from "react";
 import * as THREE from "three";
 import { useTexture } from "@react-three/drei";
 import { geo } from "./geo";
@@ -115,35 +115,130 @@ function Sign({
   );
 }
 
+function carMat(color: string, extra?: THREE.MeshStandardMaterialParameters) {
+  return new THREE.MeshStandardMaterial({
+    color,
+    roughness: 0.38,
+    metalness: 0.22,
+    ...extra,
+  });
+}
+
 function ParkedCar({
   p,
   rotY,
-  body,
-  cabin,
-  wheel,
-  glass,
+  paint,
+  kind = "sedan",
 }: {
   p: [number, number, number];
   rotY: number;
-  body: THREE.Material;
-  cabin: THREE.Material;
-  wheel: THREE.Material;
-  glass: THREE.Material;
+  paint: string;
+  kind?: "sedan" | "hatch";
 }) {
+  const mats = useMemo(() => {
+    const body = carMat(paint, { roughness: 0.28, metalness: 0.34 });
+    const trim = carMat("#1c1e22", { roughness: 0.55, metalness: 0.2 });
+    const rubber = carMat("#141416", { roughness: 0.92, metalness: 0.05 });
+    const hub = carMat("#d7dbe2", { roughness: 0.32, metalness: 0.65 });
+    const glass = new THREE.MeshStandardMaterial({
+      color: "#c8eefe",
+      emissive: "#7ec8ee",
+      emissiveIntensity: 0.35,
+      roughness: 0.08,
+      metalness: 0.12,
+      transparent: true,
+      opacity: 0.72,
+    });
+    const light = new THREE.MeshStandardMaterial({
+      color: "#fff6d2",
+      emissive: "#ffe9a8",
+      emissiveIntensity: 1.15,
+      roughness: 0.35,
+    });
+    const tail = new THREE.MeshStandardMaterial({
+      color: "#c81f24",
+      emissive: "#ff2a2a",
+      emissiveIntensity: 0.9,
+      roughness: 0.4,
+    });
+    return { body, trim, rubber, hub, glass, light, tail };
+  }, [paint]);
+
+  useEffect(() => {
+    return () => {
+      for (const m of Object.values(mats)) m.dispose();
+    };
+  }, [mats]);
+
+  const hatch = kind === "hatch";
+  const cabinZ = hatch ? -0.22 : 0.18;
+  const cabinD = hatch ? 2.55 : 1.88;
+
   return (
-    <group position={p} rotation={[0, rotY, 0]}>
-      <mesh geometry={geo.box} position={[0, 0.42, 0]} scale={[1.85, 0.5, 4.15]} material={body} castShadow />
-      <mesh geometry={geo.box} position={[0, 0.9, -0.28]} scale={[1.68, 0.46, 2.15]} material={cabin} castShadow />
-      <mesh geometry={geo.box} position={[0, 0.92, 0.72]} scale={[1.55, 0.32, 0.04]} material={glass} />
+    <group position={p} rotation={[0, rotY, 0]} userData={{ camSkip: true }}>
+      <mesh geometry={geo.box} position={[0, 0.2, 0]} scale={[1.62, 0.14, 3.85]} material={mats.trim} castShadow />
+      <mesh geometry={geo.box} position={[0, 0.55, 0]} scale={[1.8, 0.48, 4.02]} material={mats.body} castShadow />
+      <mesh geometry={geo.box} position={[0, 0.78, 1.28]} scale={[1.72, 0.2, 1.05]} material={mats.body} castShadow />
+      <mesh
+        geometry={geo.box}
+        position={[0, 1.12, cabinZ]}
+        scale={[1.68, 0.58, cabinD]}
+        material={mats.trim}
+        castShadow
+      />
+      <mesh
+        geometry={geo.box}
+        position={[0, 1.44, cabinZ - (hatch ? 0.08 : 0.04)]}
+        scale={[1.52, 0.1, hatch ? 2.28 : 1.62]}
+        material={mats.body}
+        castShadow
+      />
+      {!hatch ? (
+        <mesh geometry={geo.box} position={[0, 0.78, -1.42]} scale={[1.72, 0.22, 0.88]} material={mats.body} castShadow />
+      ) : (
+        <mesh geometry={geo.box} position={[0, 0.78, -1.72]} scale={[1.7, 0.2, 0.42]} material={mats.body} castShadow />
+      )}
+
+      <mesh geometry={geo.box} position={[0, 0.36, 2.06]} scale={[1.78, 0.26, 0.18]} material={mats.trim} castShadow />
+      <mesh geometry={geo.box} position={[0, 0.36, -2.06]} scale={[1.78, 0.26, 0.18]} material={mats.trim} castShadow />
+      <mesh geometry={geo.box} position={[0, 0.48, 2.14]} scale={[0.7, 0.14, 0.06]} material={mats.trim} />
+      <mesh geometry={geo.box} position={[-0.56, 0.52, 2.16]} scale={[0.36, 0.15, 0.08]} material={mats.light} />
+      <mesh geometry={geo.box} position={[0.56, 0.52, 2.16]} scale={[0.36, 0.15, 0.08]} material={mats.light} />
+      <mesh geometry={geo.box} position={[-0.58, 0.52, -2.16]} scale={[0.4, 0.14, 0.08]} material={mats.tail} />
+      <mesh geometry={geo.box} position={[0.58, 0.52, -2.16]} scale={[0.4, 0.14, 0.08]} material={mats.tail} />
+
+      <mesh
+        geometry={geo.box}
+        position={[0, 1.14, hatch ? 1.05 : 1.08]}
+        rotation={[-0.48, 0, 0]}
+        scale={[1.5, 0.48, 0.05]}
+        material={mats.glass}
+      />
+      <mesh
+        geometry={geo.box}
+        position={[0, 1.16, hatch ? -1.12 : -0.78]}
+        rotation={[hatch ? 0.38 : 0.48, 0, 0]}
+        scale={[1.5, hatch ? 0.52 : 0.4, 0.05]}
+        material={mats.glass}
+      />
+      <mesh geometry={geo.box} position={[-0.85, 1.14, cabinZ]} scale={[0.05, 0.4, cabinD - 0.42]} material={mats.glass} />
+      <mesh geometry={geo.box} position={[0.85, 1.14, cabinZ]} scale={[0.05, 0.4, cabinD - 0.42]} material={mats.glass} />
+
+      <mesh geometry={geo.box} position={[-0.98, 1.08, 0.62]} scale={[0.12, 0.12, 0.2]} material={mats.trim} />
+      <mesh geometry={geo.box} position={[0.98, 1.08, 0.62]} scale={[0.12, 0.12, 0.2]} material={mats.trim} />
+
       {(
         [
-          [-0.78, 0.22, 1.35],
-          [0.78, 0.22, 1.35],
-          [-0.78, 0.22, -1.35],
-          [0.78, 0.22, -1.35],
+          [-0.88, 0.34, 1.18],
+          [0.88, 0.34, 1.18],
+          [-0.88, 0.34, -1.18],
+          [0.88, 0.34, -1.18],
         ] as [number, number, number][]
       ).map((wp, i) => (
-        <mesh key={i} geometry={geo.cyl} position={wp} rotation={[0, 0, Math.PI / 2]} scale={[0.22, 0.14, 0.22]} material={wheel} />
+        <group key={i} position={wp} rotation={[0, 0, Math.PI / 2]}>
+          <mesh geometry={geo.cyl} scale={[0.34, 0.2, 0.34]} material={mats.rubber} castShadow />
+          <mesh geometry={geo.cyl} scale={[0.17, 0.21, 0.17]} material={mats.hub} />
+        </group>
       ))}
     </group>
   );
@@ -260,8 +355,9 @@ function Storefront({ mats }: { mats: StoreMats }) {
         <Sign text="ASHLEY" sub="Experience store" position={[0, 2.18, 0.12]} />
       </group>
 
-      <ParkedCar p={[-8.4, 0, 25.2]} rotY={0} body={mats.navy} cabin={mats.charcoal} wheel={mats.blackMetal} glass={mats.glass} />
-      <ParkedCar p={[8.4, 0, 25.2]} rotY={Math.PI} body={mats.rust} cabin={mats.charcoal} wheel={mats.blackMetal} glass={mats.glass} />
+      {/* Stall bays are 2.2m wide (lines at ±6.2/±8.4/±10.6). Sit in the bay, nose to the south end-cap. */}
+      <ParkedCar p={[-9.5, 0, 25.2]} rotY={0} paint="#f3f1ea" kind="sedan" />
+      <ParkedCar p={[9.5, 0, 25.2]} rotY={0} paint="#f48120" kind="hatch" />
 
       {[-10.6, -8.4, -6.2, 6.2, 8.4, 10.6].map((x) => (
         <mesh key={`stall-${x}`} geometry={geo.box} position={[x, 0.012, 25.2]} scale={[0.06, 0.02, 4.6]} material={mats.stallPaint} />

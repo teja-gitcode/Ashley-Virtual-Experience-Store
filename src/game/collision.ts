@@ -146,8 +146,8 @@ export const LOT_CURBS: WallDef[] = [
 ];
 
 export const LOT_OBSTACLES: Rect[] = [
-  rect(-8.4, 25.2, 2.0, 4.5),
-  rect(8.4, 25.2, 2.0, 4.5),
+  rect(-9.5, 25.2, 1.95, 4.3),
+  rect(9.5, 25.2, 1.95, 4.3),
   rect(-11.2, 21.35, 0.7, 0.45),
 ];
 
