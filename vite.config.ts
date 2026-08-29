@@ -149,7 +149,12 @@ export default defineConfig(({ command }) => ({
     tanstackStart(
       pages
         ? {
-            spa: { enabled: true },
+            // GitHub Pages is static hosting. Skip Nitro entirely — Vite 8/Rolldown
+            // rejects HTML as an SSR entry, which Nitro's `static` preset still does.
+            spa: {
+              enabled: true,
+              prerender: { outputPath: "/index" },
+            },
           }
         : undefined,
     ),
@@ -161,13 +166,6 @@ export default defineConfig(({ command }) => ({
             // manifest + head-tag middleware). Nitro v3 defaults serverDir to
             // false, so removing this silently unwires /?install=1 on deploys.
             serverDir: "./server",
-          }),
-        ]
-      : []),
-    ...(command === "build" && pages
-      ? [
-          nitro({
-            preset: "static",
           }),
         ]
       : []),
