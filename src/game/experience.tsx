@@ -19,7 +19,7 @@ function Scene() {
   return (
     <>
       <color attach="background" args={[dusk ? "#1a222c" : "#8aa0b5"]} />
-      <fog attach="fog" args={[dusk ? "#243044" : "#b7c4d0", dusk ? 40 : 58, dusk ? 90 : 130]} />
+      <fog attach="fog" args={[dusk ? "#243044" : "#b7c4d0", dusk ? 50 : 85, dusk ? 120 : 175]} />
       <Sky
         sunPosition={dusk ? [4, 2.4, 8] : [12, 16, 8]}
         turbidity={dusk ? 8 : 4}

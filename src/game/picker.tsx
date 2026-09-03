@@ -10,13 +10,19 @@ function xrActive() {
   return xrStore.getState().session != null;
 }
 
-export type PickHit = { type: "coupon"; id: string } | { type: "product"; id: string };
+export type PickHit =
+  | { type: "coupon"; id: string }
+  | { type: "product"; id: string }
+  | { type: "car"; id: string };
 
 export function hitFrom(obj: THREE.Object3D | null): PickHit | null {
   let o: THREE.Object3D | null = obj;
   while (o) {
     if (typeof o.userData.couponId === "string") {
       return { type: "coupon", id: o.userData.couponId as string };
+    }
+    if (typeof o.userData.carId === "string") {
+      return { type: "car", id: o.userData.carId as string };
     }
     if (typeof o.userData.productId === "string") {
       return { type: "product", id: o.userData.productId as string };
@@ -29,7 +35,11 @@ export function hitFrom(obj: THREE.Object3D | null): PickHit | null {
 export function applyPick(found: PickHit | null) {
   if (!found) return;
   if (found.type === "coupon") useExperience.getState().claimCoupon(found.id);
-  else useExperience.getState().select(found.id);
+  else if (found.type === "car") {
+    const s = useExperience.getState();
+    if (s.drivingId === found.id) s.exitCar();
+    else s.enterCar(found.id);
+  } else useExperience.getState().select(found.id);
 }
 
 export function Picker() {
@@ -56,15 +66,17 @@ export function Picker() {
       ray.current.setFromCamera(ndc.current, camera);
       const hits = ray.current.intersectObjects(scene.children, true);
       let product: { type: "product"; id: string } | null = null;
+      let car: { type: "car"; id: string } | null = null;
       const near = hits[0]?.distance ?? 0;
       for (const h of hits) {
         const found = hitFrom(h.object);
         if (!found) continue;
         if (found.type === "coupon") return found;
+        if (!car && found.type === "car") car = found;
         if (!product && found.type === "product") product = found;
         if (h.distance > near + 0.5) break;
       }
-      return product;
+      return car ?? product;
     };
 
     const onDown = (e: PointerEvent) => {

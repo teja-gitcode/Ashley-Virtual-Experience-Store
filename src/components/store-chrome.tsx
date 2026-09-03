@@ -44,10 +44,12 @@ import {
   type RoomId,
 } from "@/lib/catalog";
 import { HOST_NAME, leadToProduct, leadToRoom } from "@/lib/host";
+import { isLotCarId, lotCarLabel } from "@/game/cars";
 import { cn } from "@/lib/cn";
 import { isCoarsePointer, requestOrientationPermission } from "@/lib/handheld";
 import { setStickPointer } from "@/lib/stick";
 import { usePresence } from "@/lib/presence";
+import { colorForId } from "@/game/avatar";
 import { xrStore } from "@/game/xr-store";
 import { resumeAudio, setMuted } from "@/lib/audio";
 
@@ -68,6 +70,7 @@ export function StoreChrome() {
   const phase = useExperience((s) => s.phase);
   const enter = useExperience((s) => s.enter);
   const selectedId = useExperience((s) => s.selectedId);
+  const drivingId = useExperience((s) => s.drivingId);
   const hoveredId = useExperience((s) => s.hoveredId);
   const bagOpen = useExperience((s) => s.bagOpen);
   const catalogOpen = useExperience((s) => s.catalogOpen);
@@ -106,6 +109,11 @@ export function StoreChrome() {
         const s = useExperience.getState();
         if (s.hostNearby || s.hostReady) s.openHostMenu();
       }
+      if (e.code === "KeyF") {
+        const s = useExperience.getState();
+        if (s.drivingId) s.exitCar();
+        else if (s.nearbyCarId) s.enterCar(s.nearbyCarId);
+      }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
@@ -120,7 +128,8 @@ export function StoreChrome() {
           <TopBar room={room} count={bagCount(bag)} />
           <RoomRail room={room} />
           <ToastHud />
-          {hoveredId && !selectedId && !hostMenuOpen ? <HoverHint id={hoveredId} /> : null}
+          {hoveredId && !selectedId && !hostMenuOpen && !drivingId ? <HoverHint id={hoveredId} /> : null}
+          <DriveHud />
           <HostHud />
           {selectedId ? <ProductSheet id={selectedId} /> : null}
           {bagOpen ? <BagPanel /> : null}
@@ -156,15 +165,38 @@ function GuestNameField() {
 function VisitorCount() {
   const n = usePresence((s) => s.peers.length);
   const connected = usePresence((s) => s.connected);
+  const you = usePresence((s) => s.guestName);
+  const peers = usePresence((s) => s.peers);
+  const label = !connected
+    ? "Solo floor"
+    : n === 0
+      ? "Just you"
+      : `${n} other${n === 1 ? "" : "s"} here`;
   return (
-    <p className="mt-1 flex items-center gap-1 text-[11px] uppercase tracking-[0.16em] text-mist">
-      <Users className="size-3" />
-      {connected
-        ? n === 0
-          ? "Just you"
-          : `${n} other${n === 1 ? "" : "s"} here`
-        : "Solo floor"}
-    </p>
+    <div className="mt-1">
+      <p className="flex items-center gap-1 text-[11px] uppercase tracking-[0.16em] text-mist">
+        <Users className="size-3" />
+        {label}
+      </p>
+      {connected && n > 0 ? (
+        <ul className="mt-1.5 max-h-36 space-y-0.5 overflow-y-auto text-[12px] font-medium normal-case tracking-normal text-paper">
+          <li className="flex items-center gap-1.5 truncate text-mist">
+            <span className="size-1.5 shrink-0 rounded-full bg-orange" />
+            {you || "You"}
+            <span className="text-[10px] uppercase tracking-[0.12em] text-mist/80">you</span>
+          </li>
+          {peers.map((p) => (
+            <li key={p.id} className="flex items-center gap-1.5 truncate">
+              <span
+                className="size-1.5 shrink-0 rounded-full"
+                style={{ background: colorForId(p.id) }}
+              />
+              {p.name || "Guest"}
+            </li>
+          ))}
+        </ul>
+      ) : null}
+    </div>
   );
 }
 
@@ -247,7 +279,7 @@ function TopBar({
       data-ui
       className="pointer-events-auto absolute inset-x-0 top-0 flex items-start justify-between gap-3 p-3 md:p-4"
     >
-      <div className="flex items-center gap-3 rounded-lg bg-navy/80 px-3 py-2 shadow-lg backdrop-blur-sm">
+      <div className="flex items-start gap-3 rounded-lg bg-navy/80 px-3 py-2 shadow-lg backdrop-blur-sm">
         <HouseMark className="h-6 w-7" />
         <div>
           <p className="font-display text-lg font-semibold leading-none tracking-tight">
@@ -343,13 +375,50 @@ function RoomRail({ room }: { room: RoomId }) {
 function HoverHint({ id }: { id: string }) {
   const product = PRODUCT_MAP[id];
   const coupon = isCouponId(id);
+  const car = isLotCarId(id);
   const label = coupon
     ? "Hidden coupon"
-    : (product?.name ?? (id === "welcome-desk" ? `${HOST_NAME} · greeter` : id));
+    : car
+      ? lotCarLabel(id)
+      : (product?.name ?? (id === "welcome-desk" ? `${HOST_NAME} · greeter` : id));
   return (
     <div className="absolute bottom-36 left-1/2 z-10 -translate-x-1/2 rounded-md bg-navy/85 px-3 py-2 text-xs font-medium tracking-wide backdrop-blur-sm md:bottom-8">
       {label}
-      <span className="text-mist">{coupon ? " · tap to claim" : " · tap to view"}</span>
+      <span className="text-mist">
+        {coupon ? " · tap to claim" : car ? " · tap or F to drive" : " · tap to view"}
+      </span>
+    </div>
+  );
+}
+
+function DriveHud() {
+  const drivingId = useExperience((s) => s.drivingId);
+  const nearby = useExperience((s) => s.nearbyCarId);
+  if (drivingId) {
+    return (
+      <div
+        data-ui
+        className="pointer-events-auto absolute bottom-36 left-1/2 z-20 flex -translate-x-1/2 flex-col items-center gap-2 md:bottom-10"
+      >
+        <p className="rounded-md bg-navy/85 px-3 py-2 text-xs font-medium tracking-wide backdrop-blur-sm">
+          Driving {lotCarLabel(drivingId)}
+          <span className="text-mist"> · W/S gas · A/D steer</span>
+        </p>
+        <button
+          type="button"
+          onClick={() => useExperience.getState().exitCar()}
+          className="rounded-md bg-orange px-4 py-2 text-xs font-semibold uppercase tracking-[0.14em] text-navy"
+        >
+          Get out
+        </button>
+      </div>
+    );
+  }
+  if (!nearby) return null;
+  return (
+    <div className="pointer-events-none absolute bottom-36 left-1/2 z-10 -translate-x-1/2 rounded-md bg-navy/85 px-3 py-2 text-xs font-medium tracking-wide backdrop-blur-sm md:bottom-10">
+      {lotCarLabel(nearby)}
+      <span className="text-mist"> · tap the car or press F</span>
     </div>
   );
 }
@@ -372,6 +441,7 @@ function ToastHud() {
 
 function ProductSheet({ id }: { id: string }) {
   const close = () => useExperience.getState().select(null);
+  if (isLotCarId(id)) return null;
   if (id === "welcome-desk") return <HostMenu onClose={() => useExperience.getState().closeHostMenu()} />;
   const product = PRODUCT_MAP[id];
   if (!product) return null;
@@ -1039,7 +1109,7 @@ function HelpHint() {
   if (touch) return null;
   return (
     <p className="pointer-events-none absolute bottom-3 left-3 hidden max-w-[22rem] text-[11px] uppercase tracking-[0.16em] text-paper/80 md:block">
-      WASD walk · scroll zoom · E talk · B bag · M map · G catalog · C camera · L dusk
+      WASD walk · F drive · scroll zoom · E talk · B bag · M map · G catalog · C camera · L dusk
     </p>
   );
 }

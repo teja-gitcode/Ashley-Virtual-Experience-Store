@@ -2,6 +2,7 @@ import { useFrame } from "@react-three/fiber";
 import { useEffect, useMemo, useRef } from "react";
 import * as THREE from "three";
 import { BlockPerson, NameTag, colorForId } from "./avatar";
+import { CarModel, LOT_CARS } from "./cars";
 import { usePresence, type PeerPose } from "@/lib/presence";
 
 function RemoteShopper({
@@ -20,6 +21,8 @@ function RemoteShopper({
     [id],
   );
   useEffect(() => () => shirt.dispose(), [shirt]);
+  const spin = useRef(0);
+  const spec = LOT_CARS.find((c) => c.id === pose.car);
 
   useFrame((_, dt) => {
     const r = root.current;
@@ -28,20 +31,28 @@ function RemoteShopper({
     const p = target.current;
     r.position.x = THREE.MathUtils.damp(r.position.x, p.x, 10, dt);
     r.position.z = THREE.MathUtils.damp(r.position.z, p.z, 10, dt);
+    const driving = !!LOT_CARS.find((c) => c.id === p.car);
     const cur = b.rotation.y;
-    let dest = p.yaw + Math.PI;
+    let dest = driving ? p.yaw : p.yaw + Math.PI;
     let diff = dest - cur;
     while (diff > Math.PI) diff -= Math.PI * 2;
     while (diff < -Math.PI) diff += Math.PI * 2;
     b.rotation.y = cur + diff * Math.min(1, dt * 10);
+    spin.current = driving && p.walk > 0 ? 18 : 0;
   });
 
   return (
     <group ref={root} position={[pose.x, 0, pose.z]} userData={{ camSkip: true }}>
       <group ref={body}>
-        <BlockPerson shirt={shirt} walking={pose.walk > 0} />
+        {spec ? (
+          <CarModel paint={spec.paint} kind={spec.kind} wheelSpinRef={spin} />
+        ) : (
+          <BlockPerson shirt={shirt} walking={pose.walk > 0} />
+        )}
       </group>
-      <NameTag text={pose.name || "Guest"} />
+      <group position={[0, spec ? 0.55 : 0, 0]}>
+        <NameTag text={pose.name || "Guest"} />
+      </group>
     </group>
   );
 }

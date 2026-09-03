@@ -3,6 +3,11 @@ import { persist } from "zustand/middleware";
 import type { RoomId } from "./catalog";
 import type { HostLead } from "./host";
 
+const defaultCarPoses = (): Record<string, { x: number; z: number; yaw: number }> => ({
+  "lot-sedan": { x: -9.5, z: 25.2, yaw: 0 },
+  "lot-hatch": { x: 9.5, z: 25.2, yaw: 0 },
+});
+
 type Bag = Record<string, number>;
 export type CatalogView = "map" | "shop";
 
@@ -51,6 +56,10 @@ type ExperienceState = {
   hostReady: boolean;
   hostLead: HostLead | null;
   hostArrived: string | null;
+  drivingId: string | null;
+  nearbyCarId: string | null;
+  driveSpeed: number;
+  carPoses: Record<string, { x: number; z: number; yaw: number }>;
   enter: () => void;
   select: (id: string | null) => void;
   hover: (id: string | null) => void;
@@ -84,6 +93,10 @@ type ExperienceState = {
   startHostLead: (lead: HostLead) => void;
   clearHostLead: () => void;
   setHostArrived: (label: string | null) => void;
+  setNearbyCar: (id: string | null) => void;
+  enterCar: (id: string) => void;
+  exitCar: () => void;
+  setCarPose: (id: string, x: number, z: number, yaw: number, speed: number) => void;
 };
 
 function clamp(n: number, a: number, b: number) {
@@ -121,7 +134,11 @@ export const useExperience = create<ExperienceState>()(
       hostReady: false,
       hostLead: null,
       hostArrived: null,
-      enter: () => set({ phase: "play", px: 0, pz: 23.5 }),
+      drivingId: null,
+      nearbyCarId: null,
+      driveSpeed: 0,
+      carPoses: defaultCarPoses(),
+      enter: () => set({ phase: "play", px: 0, pz: 23.5, drivingId: null }),
       select: (id) =>
         set({
           selectedId: id,
@@ -185,7 +202,8 @@ export const useExperience = create<ExperienceState>()(
         if (lookDx || lookDy) set({ lookDx: 0, lookDy: 0 });
         return { dx: lookDx, dy: lookDy };
       },
-      requestTeleport: (x, z) => set({ teleport: { x, z }, selectedId: null, catalogOpen: false }),
+      requestTeleport: (x, z) =>
+        set({ teleport: { x, z }, selectedId: null, catalogOpen: false, drivingId: null, driveSpeed: 0 }),
       consumeTeleport: () => {
         const t = get().teleport;
         if (t) set({ teleport: null });
@@ -235,6 +253,46 @@ export const useExperience = create<ExperienceState>()(
         }),
       clearHostLead: () => set({ hostLead: null }),
       setHostArrived: (label) => set({ hostArrived: label, hostLead: null }),
+      setNearbyCar: (id) => {
+        if (get().nearbyCarId !== id) set({ nearbyCarId: id });
+      },
+      enterCar: (id) => {
+        const s = get();
+        const p = s.carPoses[id];
+        if (!p) return;
+        if (Math.hypot(s.px - p.x, s.pz - p.z) > 5.8) {
+          set({ toast: "Walk over to the car", toastKey: s.toastKey + 1 });
+          return;
+        }
+        set({
+          drivingId: id,
+          nearbyCarId: id,
+          selectedId: null,
+          catalogOpen: false,
+          bagOpen: false,
+          hostMenuOpen: false,
+          firstPerson: false,
+        });
+      },
+      exitCar: () => {
+        const s = get();
+        if (!s.drivingId) return;
+        const p = s.carPoses[s.drivingId];
+        const x = p.x - Math.cos(p.yaw) * 2.35;
+        const z = p.z + Math.sin(p.yaw) * 2.35;
+        set({
+          drivingId: null,
+          driveSpeed: 0,
+          teleport: { x, z },
+        });
+      },
+      setCarPose: (id, x, z, yaw, speed) =>
+        set((s) => ({
+          carPoses: { ...s.carPoses, [id]: { x, z, yaw } },
+          driveSpeed: speed,
+          px: x,
+          pz: z,
+        })),
     }),
     {
       name: "ashley-experience-bag",
