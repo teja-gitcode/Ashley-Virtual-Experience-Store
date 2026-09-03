@@ -138,18 +138,26 @@ export const FENCES: WallDef[] = [
   { x: 0, z: -30.15, w: 28.6, d: 0.12 },
 ];
 
-/** Soft lot edge so you stay on the grass / asphalt. Door gap is open. */
+/** Soft lot edge so you stay on the grass / asphalt. Driveway cut is open to the road. */
 export const LOT_CURBS: WallDef[] = [
-  { x: 0, z: 30.55, w: 29.2, d: 0.35 },
+  { x: -8.9, z: 30.55, w: 11.0, d: 0.35 },
+  { x: 8.9, z: 30.55, w: 11.0, d: 0.35 },
   { x: -14.4, z: 23.35, w: 0.35, d: 14.4 },
   { x: 14.4, z: 23.35, w: 0.35, d: 14.4 },
+  // Closed loop around the long road — only the center driveway is open.
+  { x: -30.3, z: 30.7, w: 31.8, d: 0.42 },
+  { x: 30.3, z: 30.7, w: 31.8, d: 0.42 },
+  { x: -46.3, z: 38.2, w: 0.42, d: 15.4 },
+  { x: 46.3, z: 38.2, w: 0.42, d: 15.4 },
+  { x: 0, z: 45.7, w: 93.0, d: 0.42 },
 ];
 
 export const LOT_OBSTACLES: Rect[] = [
-  rect(-9.5, 25.2, 1.95, 4.3),
-  rect(9.5, 25.2, 1.95, 4.3),
   rect(-11.2, 21.35, 0.7, 0.45),
 ];
+
+/** Stops a driven car from nosing into the storefront. Walkers still use the door. */
+export const CAR_STORE_BARRIER: Rect = rect(0, 16.15, 4.4, 0.55);
 
 /** Store walls — keep in sync with world.tsx via INTERIOR_WALLS / FENCES. */
 export function buildWalls(): Rect[] {

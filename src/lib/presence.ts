@@ -7,6 +7,8 @@ export type PeerPose = {
   yaw: number;
   walk: number;
   name: string;
+  /** Empty when on foot; lot-sedan / lot-hatch when driving. */
+  car: string;
 };
 
 type Remote = PeerPose & { id: string; at: number };
@@ -60,7 +62,7 @@ type RoomHandle = {
 
 let roomHandle: RoomHandle | null = null;
 let lastSend = 0;
-let lastPose: PeerPose = { x: 0, z: 23.5, yaw: 0, walk: 0, name: "Guest" };
+let lastPose: PeerPose = { x: 0, z: 23.5, yaw: 0, walk: 0, name: "Guest", car: "" };
 
 export function sendMyPose(pose: PeerPose) {
   lastPose = pose;
@@ -83,6 +85,7 @@ export function joinShowroom() {
         yaw: Number(data.yaw) || 0,
         walk: data.walk ? 1 : 0,
         name: String(data.name || "Guest").slice(0, 18),
+        car: typeof data.car === "string" ? data.car : "",
       });
     };
     room.onPeerJoin = (peerId) => {
