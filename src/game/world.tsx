@@ -258,6 +258,88 @@ function Storefront({ mats }: { mats: StoreMats }) {
   );
 }
 
+const SLEEP_ADS: { x: number; title: string; line: string; price: string }[] = [
+  { x: 5.08, title: "CHIME", line: "8-inch memory foam", price: "$199" },
+  { x: 8.33, title: "CHIME", line: "10-inch memory foam", price: "$299" },
+  { x: 11.57, title: "CHIME", line: "12-inch memory foam", price: "$449" },
+  { x: 14.81, title: "HYBRID", line: "13-inch coil and foam", price: "$699" },
+];
+
+function SleepAd({ x, title, line, price }: { x: number; title: string; line: string; price: string }) {
+  const tex = useMemo(() => {
+    const c = document.createElement("canvas");
+    c.width = 768;
+    c.height = 1024;
+    const ctx = c.getContext("2d")!;
+    ctx.fillStyle = "#1b2634";
+    ctx.fillRect(0, 0, 768, 1024);
+    ctx.fillStyle = "#f48120";
+    ctx.fillRect(0, 0, 768, 28);
+    ctx.fillRect(0, 996, 768, 28);
+    ctx.fillStyle = "#f4efe6";
+    ctx.font = "600 42px Trebuchet MS, sans-serif";
+    ctx.fillText("ASHLEY SLEEP", 56, 120);
+    ctx.font = "700 108px Trebuchet MS, sans-serif";
+    ctx.fillText(title, 56, 250);
+    ctx.fillStyle = "#d7c4a3";
+    ctx.font = "400 40px Trebuchet MS, sans-serif";
+    ctx.fillText(line, 56, 320);
+    ctx.fillStyle = "#f7f1e8";
+    roundRect(ctx, 120, 400, 528, 280, 28);
+    ctx.fill();
+    ctx.strokeStyle = "#c4b093";
+    ctx.lineWidth = 4;
+    for (let i = 0; i < 5; i++) {
+      ctx.beginPath();
+      ctx.moveTo(150, 450 + i * 46);
+      ctx.lineTo(618, 450 + i * 46);
+      ctx.stroke();
+    }
+    ctx.fillStyle = "#31445a";
+    roundRect(ctx, 250, 430, 220, 70, 16);
+    ctx.fill();
+    ctx.fillStyle = "#f48120";
+    ctx.font = "700 72px Trebuchet MS, sans-serif";
+    ctx.fillText(price, 56, 820);
+    ctx.fillStyle = "#b7b0a6";
+    ctx.font = "400 32px Trebuchet MS, sans-serif";
+    ctx.fillText("On display in this gallery", 56, 880);
+    const t = new THREE.CanvasTexture(c);
+    t.colorSpace = THREE.SRGBColorSpace;
+    t.anisotropy = 8;
+    return t;
+  }, [title, line, price]);
+  return (
+    <group position={[x, 2.15, -19.96]} userData={{ camSkip: true }}>
+      <mesh position={[0, 0, -0.02]}>
+        <planeGeometry args={[2.55, 3.2]} />
+        <meshStandardMaterial color="#243044" roughness={0.9} />
+      </mesh>
+      <mesh position={[0, 0, 0.01]}>
+        <planeGeometry args={[2.35, 3.0]} />
+        <meshBasicMaterial map={tex} />
+      </mesh>
+    </group>
+  );
+}
+
+function roundRect(
+  ctx: CanvasRenderingContext2D,
+  x: number,
+  y: number,
+  w: number,
+  h: number,
+  r: number,
+) {
+  ctx.beginPath();
+  ctx.moveTo(x + r, y);
+  ctx.arcTo(x + w, y, x + w, y + h, r);
+  ctx.arcTo(x + w, y + h, x, y + h, r);
+  ctx.arcTo(x, y + h, x, y, r);
+  ctx.arcTo(x, y, x + w, y, r);
+  ctx.closePath();
+}
+
 function Mural({
   url,
   position,
@@ -399,7 +481,7 @@ export function StoreWorld({ mats }: { mats: StoreMats }) {
       <Floor p={[0, -0.085, -2]} s={[52.2, 0.05, 36.3]} m={mats.grout} />
 
       {/* Aisle runner — oak only in the corridor, not over room floors. */}
-      <Floor p={[0, -0.045, -2]} s={[3.12, 0.09, 35.9]} m={mats.oakFloor} />
+      <Floor p={[0, -0.045, -2.03]} s={[3.12, 0.09, 35.96]} m={mats.oakFloor} />
 
       {/* Lobby tile on either side of the runner (z 4.2 → 16). */}
       <Floor p={[-9.9, -0.045, 10.1]} s={[16.2, 0.09, 11.8]} m={mats.tile} />
@@ -409,14 +491,14 @@ export function StoreWorld({ mats }: { mats: StoreMats }) {
       <Floor p={[-9.9, -0.045, 0]} s={[16.2, 0.09, 7.6]} m={mats.oakFloor} />
       <Floor p={[9.9, -0.045, 0]} s={[16.2, 0.09, 7.6]} m={mats.carpet} />
 
-      {/* Dining / sleep (z -19.95 → -4.2). */}
-      <Floor p={[-9.9, -0.045, -12.075]} s={[16.2, 0.09, 15.75]} m={mats.oakFloor} />
-      <Floor p={[9.9, -0.045, -12.075]} s={[16.2, 0.09, 15.75]} m={mats.tile} />
+      {/* Dining / sleep meet the inside face of the patio wall (z=-20.01). */}
+      <Floor p={[-9.9, -0.045, -12.105]} s={[16.2, 0.09, 15.81]} m={mats.oakFloor} />
+      <Floor p={[9.9, -0.045, -12.105]} s={[16.2, 0.09, 15.81]} m={mats.tile} />
 
       {/* Wings */}
-      <Floor p={[-22.15, -0.045, -8.075]} s={[7.7, 0.09, 23.75]} m={mats.kitchenTile} />
+      <Floor p={[-22.15, -0.045, -8.105]} s={[7.7, 0.09, 23.81]} m={mats.kitchenTile} />
       <Floor p={[22.15, -0.045, 0]} s={[7.7, 0.09, 7.6]} m={mats.kidsCarpet} />
-      <Floor p={[22.15, -0.045, -12.075]} s={[7.7, 0.09, 15.75]} m={mats.oakFloor} />
+      <Floor p={[22.15, -0.045, -12.105]} s={[7.7, 0.09, 15.81]} m={mats.oakFloor} />
 
       {/* Doorway saddles sit above both floors so the seam never flickers. */}
       <Floor p={[-10, 0.012, 4]} s={[2.5, 0.02, 0.42]} m={mats.oak} />
@@ -429,8 +511,9 @@ export function StoreWorld({ mats }: { mats: StoreMats }) {
       <Floor p={[18.15, 0.012, -12]} s={[0.42, 0.02, 2.2]} m={mats.oak} />
       <Floor p={[22.7, 0.012, -4]} s={[2.5, 0.02, 0.42]} m={mats.oak} />
 
-      <Floor p={[0, -0.05, -25]} s={[28.5, 0.1, 9.8]} m={mats.deck} />
-      <Floor p={[0, -0.14, -25]} s={[40, 0.06, 14]} m={mats.grass} />
+      {/* Deck fills the fence. Grass stops at the outside of the store wall. */}
+      <Floor p={[0, -0.05, -25.19]} s={[28.28, 0.1, 9.8]} m={mats.deck} />
+      <Floor p={[0, -0.14, -26.3]} s={[42, 0.06, 12]} m={mats.grass} />
 
       {/* Driveway — south of the store, no overlap with lobby tile. */}
       <Floor p={[0, -0.085, 23.2]} s={[30, 0.05, 14.4]} m={mats.grout} />
@@ -539,12 +622,29 @@ export function StoreWorld({ mats }: { mats: StoreMats }) {
       <group position={[-10.6, 0, 0.4]}>
         <Rug mat={mats.rugLiving} w={6.4} d={4.4} />
       </group>
-      <group position={[11.2, 0, 0.5]}>
-        <Rug mat={mats.rugBed} w={6.2} d={4.6} />
+      <group position={[4.4, 0, -2.65]}>
+        <Rug mat={mats.rugBed} w={2.7} d={2.3} />
+      </group>
+      <group position={[6.0, 0, 2.65]}>
+        <Rug mat={mats.rugDolante} w={2.5} d={2.2} />
+      </group>
+      <group position={[15.2, 0, -2.2]}>
+        <Rug mat={mats.rugBed} w={3.6} d={2.6} />
       </group>
       <group position={[-10.2, 0, -12]}>
         <Rug mat={mats.rugLiving} w={5.2} d={3.6} />
       </group>
+      <group position={[-15.15, 0, -7.9]}>
+        <Rug mat={mats.rugLiving} w={3.0} d={2.8} />
+      </group>
+      {[5.08, 8.33, 11.57, 14.81].map((x) => (
+        <group key={`sleep-rug-${x}`} position={[x, 0, -18.8]}>
+          <Rug mat={mats.rugBed} w={1.55} d={2.15} />
+        </group>
+      ))}
+      {SLEEP_ADS.map((ad) => (
+        <SleepAd key={ad.x} {...ad} />
+      ))}
       <group position={[-22.1, 0, -8]}>
         <Rug mat={mats.rugLiving} w={3.6} d={2.4} />
       </group>
@@ -635,7 +735,13 @@ export function StoreWorld({ mats }: { mats: StoreMats }) {
             onClick={onXrPick}
             onPointerOver={onXrHover}
           >
-            <ProductPiece kind={product.kind} fabric={product.fabric} mats={mats} />
+            <ProductPiece
+              kind={product.kind}
+              fabric={product.fabric}
+              mats={mats}
+              profile={product.profile}
+              size={product.profile ? product.size : undefined}
+            />
           </group>
         );
       })}

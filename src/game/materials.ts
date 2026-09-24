@@ -137,6 +137,35 @@ function grass() {
   }, 256, 8, 8);
 }
 
+function medallionRug() {
+  return canvasTex((ctx, size) => {
+    ctx.fillStyle = "#efe4d2";
+    ctx.fillRect(0, 0, size, size);
+    ctx.strokeStyle = "#243044";
+    ctx.lineWidth = 26;
+    ctx.strokeRect(30, 30, size - 60, size - 60);
+    ctx.strokeStyle = "#c4a574";
+    ctx.lineWidth = 8;
+    ctx.strokeRect(58, 58, size - 116, size - 116);
+    ctx.beginPath();
+    ctx.moveTo(size / 2, size * 0.3);
+    ctx.lineTo(size * 0.7, size / 2);
+    ctx.lineTo(size / 2, size * 0.7);
+    ctx.lineTo(size * 0.3, size / 2);
+    ctx.closePath();
+    ctx.fillStyle = "#31445a";
+    ctx.fill();
+    ctx.lineWidth = 6;
+    ctx.strokeStyle = "#c4a574";
+    ctx.stroke();
+    ctx.fillStyle = "#efe4d2";
+    ctx.beginPath();
+    ctx.arc(size / 2, size / 2, 28, 0, Math.PI * 2);
+    ctx.fill();
+    noise(ctx, size, size, 8);
+  }, 512, 1, 1);
+}
+
 function rug(a: string, b: string) {
   return canvasTex(
     (ctx, size) => {
@@ -183,6 +212,7 @@ function makeMaterials() {
   const grassMap = grass();
   const rugLiving = rug("#5c3d32", "#c9b496");
   const rugBed = rug("#4a5560", "#d5cfc4");
+  const rugDolante = medallionRug();
 
   const mats = {
     oak: new THREE.MeshStandardMaterial({
@@ -251,6 +281,11 @@ function makeMaterials() {
       roughness: 0.92,
       metalness: 0,
     }),
+    rugDolante: new THREE.MeshStandardMaterial({
+      map: rugDolante,
+      roughness: 0.9,
+      metalness: 0,
+    }),
     charcoal: std("#2c2d32", { roughness: 0.86 }),
     slate: std("#667484", { roughness: 0.84 }),
     pebble: std("#cfc6ba", { roughness: 0.88 }),
@@ -317,7 +352,7 @@ function makeMaterials() {
     khaki: std("#8d7a58", { roughness: 0.8 }),
     shirt: std("#243044", { roughness: 0.78 }),
     staff: std("#e07a28", { roughness: 0.7 }),
-    _tex: [oakMap, darkWoodMap, wallMap, carpetMap, kidsCarpetMap, tileMap, deckMap, grassMap, rugLiving, rugBed],
+    _tex: [oakMap, darkWoodMap, wallMap, carpetMap, kidsCarpetMap, tileMap, deckMap, grassMap, rugLiving, rugBed, rugDolante],
   };
   return mats;
 }

@@ -133,9 +133,10 @@ export const INTERIOR_WALLS: WallDef[] = [
 ];
 
 export const FENCES: WallDef[] = [
-  { x: -14.2, z: -25.0, w: 0.12, d: 10.0 },
-  { x: 14.2, z: -25.0, w: 0.12, d: 10.0 },
-  { x: 0, z: -30.15, w: 28.6, d: 0.12 },
+  // Side rails stop on the outside face of the store wall (z=-20.29) and meet the back rail.
+  { x: -14.2, z: -25.25, w: 0.12, d: 9.92 },
+  { x: 14.2, z: -25.25, w: 0.12, d: 9.92 },
+  { x: 0, z: -30.15, w: 28.64, d: 0.12 },
 ];
 
 /** Soft lot edge so you stay on the grass / asphalt. Driveway cut is open to the road. */

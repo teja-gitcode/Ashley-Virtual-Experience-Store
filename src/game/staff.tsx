@@ -9,7 +9,6 @@ import { geo } from "./geo";
 import type { StoreMats } from "./materials";
 
 const NEAR = 6.2;
-const FAR = 10.5;
 const WALK = 3.6;
 
 export function HostStaff({ mats }: { mats: StoreMats }) {
@@ -115,15 +114,25 @@ export function HostStaff({ mats }: { mats: StoreMats }) {
     const atGreet = Math.hypot(pos.current.x - HOST_GREET[0], pos.current.z - HOST_GREET[1]) < 0.4;
     const ready = atGreet && !stepped && nearby && !st.hostLead;
     if (ready !== st.hostReady) st.setHostReady(ready);
-    if (ready && !openedOnce.current && !st.hostMenuOpen && !st.selectedId && !st.catalogOpen && !st.bagOpen) {
+    // Greet once per visit. Coming back to the desk does not open the menu again.
+    if (
+      ready &&
+      !openedOnce.current &&
+      !st.hostGreeted &&
+      !st.hostMenuOpen &&
+      !st.selectedId &&
+      !st.catalogOpen &&
+      !st.bagOpen &&
+      !st.studioOpen
+    ) {
       openedOnce.current = true;
+      st.markHostGreeted();
       st.openHostMenu();
       if (!st.muted) {
         resumeAudio();
         alexGreet();
       }
     }
-    if (!nearby && dist > FAR) openedOnce.current = false;
 
     if (group.current) {
       group.current.position.copy(pos.current);

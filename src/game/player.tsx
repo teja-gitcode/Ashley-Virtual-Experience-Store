@@ -126,7 +126,7 @@ export function Player({ mats }: { mats: StoreMats }) {
 
   useXRControllerLocomotion(
     (velocity, rotationY, dt) => {
-      if (!inXR || useExperience.getState().phase !== "play") return;
+      if (!inXR || useExperience.getState().phase !== "play" || useExperience.getState().studioOpen) return;
       if (rotationY) xrYaw.current += rotationY;
       const step = typeof dt === "number" ? dt : 0.016;
       const dx = velocity.x * step;
@@ -242,6 +242,11 @@ export function Player({ mats }: { mats: StoreMats }) {
   useFrame((state, delta) => {
     const dt = Math.min(delta, 0.1);
     const st = useExperience.getState();
+
+    if (st.studioOpen) {
+      keys.clear();
+      return;
+    }
 
     if (st.phase === "start") {
       if (!inXR) {

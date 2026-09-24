@@ -8,9 +8,11 @@ import {
   Compass,
   Eye,
   Headset,
+  Heart,
   Lamp,
   MapPin,
   Moon,
+  Ruler,
   Search,
   ShoppingBag,
   Sofa,
@@ -43,6 +45,8 @@ import {
   standNear,
   type RoomId,
 } from "@/lib/catalog";
+import { formatInches } from "@/lib/room-fit";
+import { RoomStudio } from "@/components/room-studio";
 import { HOST_NAME, leadToProduct, leadToRoom } from "@/lib/host";
 import { isLotCarId, lotCarLabel } from "@/game/cars";
 import { cn } from "@/lib/cn";
@@ -78,6 +82,7 @@ export function StoreChrome() {
   const room = useExperience((s) => s.room);
   const bag = useExperience((s) => s.bag);
   const muted = useExperience((s) => s.muted);
+  const studioOpen = useExperience((s) => s.studioOpen);
 
   useEffect(() => {
     setMuted(muted);
@@ -86,6 +91,10 @@ export function StoreChrome() {
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
+      if (useExperience.getState().studioOpen) {
+        if (e.code === "Escape") useExperience.getState().closeStudio();
+        return;
+      }
       if (e.code === "Escape") {
         useExperience.getState().select(null);
         useExperience.getState().toggleBag(false);
@@ -123,7 +132,9 @@ export function StoreChrome() {
     <div className="pointer-events-none absolute inset-0 text-paper">
       {phase === "start" ? <StartOverlay onEnter={enter} /> : null}
 
-      {phase === "play" ? (
+      {phase === "play" && studioOpen ? <RoomStudio /> : null}
+
+      {phase === "play" && !studioOpen ? (
         <>
           <TopBar room={room} count={bagCount(bag)} />
           <RoomRail room={room} />
@@ -325,6 +336,15 @@ function TopBar({
         </button>
         <button
           type="button"
+          onClick={() => useExperience.getState().openStudio()}
+          className="inline-flex items-center gap-1 rounded-md bg-navy/80 px-2.5 py-2.5 text-xs font-semibold uppercase tracking-[0.12em] text-paper backdrop-blur-sm"
+          aria-label="Open my room"
+        >
+          <Ruler className="size-4" />
+          <span className="hidden sm:inline">My Room</span>
+        </button>
+        <button
+          type="button"
           onClick={() => useExperience.getState().toggleBag()}
           className="relative rounded-md bg-navy/80 p-2.5 text-paper backdrop-blur-sm"
           aria-label="Open bag"
@@ -441,11 +461,11 @@ function ToastHud() {
 
 function ProductSheet({ id }: { id: string }) {
   const close = () => useExperience.getState().select(null);
+  const qty = useExperience((s) => s.bag[id] ?? 0);
   if (isLotCarId(id)) return null;
   if (id === "welcome-desk") return <HostMenu onClose={() => useExperience.getState().closeHostMenu()} />;
   const product = PRODUCT_MAP[id];
   if (!product) return null;
-  const qty = useExperience((s) => s.bag[id] ?? 0);
 
   return (
     <aside
@@ -474,6 +494,13 @@ function ProductSheet({ id }: { id: string }) {
           ) : null}
         </div>
         <p className="mt-3 text-sm leading-relaxed text-stone">{product.blurb}</p>
+        <p className="mt-3 text-sm text-stone">
+          {formatInches(product.size.w)} wide · {formatInches(product.size.d)} deep ·{" "}
+          {formatInches(product.size.h)} tall
+        </p>
+        <p className="text-xs text-mist">
+          {((product.size.w * product.size.d) / 144).toFixed(1)} sq ft on the floor
+        </p>
         <div className="mt-5 flex gap-2">
           <button
             type="button"
@@ -484,10 +511,36 @@ function ProductSheet({ id }: { id: string }) {
           >
             {qty ? `Add another · ${qty} in bag` : "Add to bag"}
           </button>
+          <ShortlistButton id={product.id} />
         </div>
+        <button
+          type="button"
+          onClick={() => useExperience.getState().tryInRoom(product.id)}
+          className="mt-2 w-full rounded-md border border-line py-3 text-sm font-semibold text-navy"
+        >
+          Try in my room
+        </button>
         <p className="mt-3 text-xs text-stone">Saved on this device until you clear the browser.</p>
       </div>
     </aside>
+  );
+}
+
+function ShortlistButton({ id }: { id: string }) {
+  const on = useExperience((s) => s.shortlist.includes(id));
+  return (
+    <button
+      type="button"
+      onClick={() => useExperience.getState().toggleShortlist(id)}
+      className={cn(
+        "grid size-11 shrink-0 place-items-center rounded-md border",
+        on ? "border-orange bg-orange text-navy" : "border-line text-stone",
+      )}
+      aria-label={on ? "Remove from shortlist" : "Add to shortlist"}
+      aria-pressed={on}
+    >
+      <Heart className="size-4" fill={on ? "currentColor" : "none"} />
+    </button>
   );
 }
 
@@ -618,6 +671,7 @@ function HostHud() {
   const selectedId = useExperience((s) => s.selectedId);
   const catalogOpen = useExperience((s) => s.catalogOpen);
   const bagOpen = useExperience((s) => s.bagOpen);
+  const greeted = useExperience((s) => s.hostGreeted);
   if (catalogOpen || bagOpen) return null;
 
   if (lead) {
@@ -663,7 +717,7 @@ function HostHud() {
     );
   }
 
-  if ((nearby || ready) && !menu && !selectedId) {
+  if ((nearby || ready) && !menu && !selectedId && !greeted) {
     return (
       <button
         data-ui
@@ -882,11 +936,11 @@ function CatalogPanel() {
           </div>
           <ul className="mt-3 space-y-1">
             {items.map((p) => (
-              <li key={p.id}>
+              <li key={p.id} className="flex items-center gap-1">
                 <button
                   type="button"
                   onClick={() => jumpToProduct(p.id)}
-                  className="flex w-full items-center gap-3 rounded-md px-2 py-2 text-left hover:bg-paper"
+                  className="flex min-w-0 flex-1 items-center gap-3 rounded-md px-2 py-2 text-left hover:bg-paper"
                 >
                   <img
                     src={productImage(p.id)}
@@ -901,6 +955,7 @@ function CatalogPanel() {
                   </span>
                   <span className="text-xs tabular-nums text-stone">{money(p.price)}</span>
                 </button>
+                <ShortlistButton id={p.id} />
               </li>
             ))}
             {items.length === 0 ? (

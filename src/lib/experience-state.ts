@@ -2,6 +2,7 @@ import { create } from "zustand";
 import { persist } from "zustand/middleware";
 import type { RoomId } from "./catalog";
 import type { HostLead } from "./host";
+import type { DoorWall } from "./room-fit";
 
 const defaultCarPoses = (): Record<string, { x: number; z: number; yaw: number }> => ({
   "lot-sedan": { x: -9.5, z: 25.2, yaw: 0 },
@@ -10,6 +11,90 @@ const defaultCarPoses = (): Record<string, { x: number; z: number; yaw: number }
 
 type Bag = Record<string, number>;
 export type CatalogView = "map" | "shop";
+export type FloorFinish = "oak" | "carpet" | "tile";
+
+export type RoomItem = {
+  uid: string;
+  productId: string;
+  x: number;
+  z: number;
+  rot: number;
+};
+
+export type RoomPlan = {
+  id: string;
+  name: string;
+  widthIn: number;
+  lengthIn: number;
+  heightIn: number;
+  floor: FloorFinish;
+  doorWall: DoorWall;
+  doorOffsetIn: number;
+  doorWidthIn: number;
+  items: RoomItem[];
+};
+
+export function defaultRoomPlan(name = "Bedroom"): RoomPlan {
+  return {
+    id: `room-${Math.random().toString(36).slice(2, 8)}`,
+    name,
+    widthIn: 12 * 12,
+    lengthIn: 14 * 12,
+    heightIn: 8 * 12,
+    floor: "carpet",
+    doorWall: "s",
+    doorOffsetIn: 0,
+    doorWidthIn: 32,
+    items: [],
+  };
+}
+
+const ROOM_PRESETS: Record<string, Pick<RoomPlan, "name" | "widthIn" | "lengthIn" | "floor">> = {
+  living: { name: "Living", widthIn: 12 * 12, lengthIn: 18 * 12, floor: "oak" },
+  bedroom: { name: "Bedroom", widthIn: 12 * 12, lengthIn: 14 * 12, floor: "carpet" },
+  dining: { name: "Dining", widthIn: 11 * 12, lengthIn: 14 * 12, floor: "oak" },
+};
+
+export { ROOM_PRESETS };
+
+function pieceUid() {
+  return `piece-${Date.now().toString(36)}-${Math.floor(Math.random() * 1000)}`;
+}
+
+function clampIn(n: number, min: number, max: number) {
+  if (!Number.isFinite(n)) return min;
+  return Math.max(min, Math.min(max, Math.round(n)));
+}
+
+function asPlan(value: unknown): RoomPlan | null {
+  if (!value || typeof value !== "object") return null;
+  const raw = value as Partial<RoomPlan>;
+  if (typeof raw.id !== "string" || typeof raw.name !== "string" || !Array.isArray(raw.items)) return null;
+  const items = raw.items.flatMap((item) => {
+    if (!item || typeof item !== "object") return [];
+    const row = item as Partial<RoomItem>;
+    if (typeof row.uid !== "string" || typeof row.productId !== "string") return [];
+    if (typeof row.x !== "number" || typeof row.z !== "number" || typeof row.rot !== "number") return [];
+    return [{ uid: row.uid, productId: row.productId, x: row.x, z: row.z, rot: row.rot }];
+  });
+  const doorWall: DoorWall =
+    raw.doorWall === "n" || raw.doorWall === "e" || raw.doorWall === "w" || raw.doorWall === "s"
+      ? raw.doorWall
+      : "s";
+  const floor: FloorFinish = raw.floor === "oak" || raw.floor === "tile" || raw.floor === "carpet" ? raw.floor : "carpet";
+  return {
+    id: raw.id,
+    name: raw.name,
+    widthIn: clampIn(raw.widthIn ?? 144, 72, 480),
+    lengthIn: clampIn(raw.lengthIn ?? 168, 72, 480),
+    heightIn: clampIn(raw.heightIn ?? 96, 96, 144),
+    floor,
+    doorWall,
+    doorOffsetIn: clampIn(raw.doorOffsetIn ?? 0, -240, 240),
+    doorWidthIn: clampIn(raw.doorWidthIn ?? 32, 28, 48),
+    items,
+  };
+}
 
 const ZOOM_MIN = 2.2;
 const ZOOM_MAX = 14;
@@ -56,10 +141,15 @@ type ExperienceState = {
   hostReady: boolean;
   hostLead: HostLead | null;
   hostArrived: string | null;
+  hostGreeted: boolean;
   drivingId: string | null;
   nearbyCarId: string | null;
   driveSpeed: number;
   carPoses: Record<string, { x: number; z: number; yaw: number }>;
+  studioOpen: boolean;
+  shortlist: string[];
+  roomPlans: RoomPlan[];
+  activeRoomId: string;
   enter: () => void;
   select: (id: string | null) => void;
   hover: (id: string | null) => void;
@@ -93,14 +183,32 @@ type ExperienceState = {
   startHostLead: (lead: HostLead) => void;
   clearHostLead: () => void;
   setHostArrived: (label: string | null) => void;
+  markHostGreeted: () => void;
   setNearbyCar: (id: string | null) => void;
   enterCar: (id: string) => void;
   exitCar: () => void;
   setCarPose: (id: string, x: number, z: number, yaw: number, speed: number) => void;
+  toggleShortlist: (id: string) => void;
+  openStudio: () => void;
+  closeStudio: () => void;
+  tryInRoom: (productId: string) => void;
+  addRoomPlan: () => void;
+  removeRoomPlan: (id: string) => void;
+  setActiveRoom: (id: string) => void;
+  updateActiveRoom: (patch: Partial<Omit<RoomPlan, "id" | "items">>) => void;
+  applyRoomPreset: (key: string) => void;
+  addRoomItem: (productId: string) => void;
+  moveRoomItem: (uid: string, x: number, z: number, rot?: number) => void;
+  removeRoomItem: (uid: string) => void;
 };
 
 function clamp(n: number, a: number, b: number) {
   return Math.max(a, Math.min(b, n));
+}
+
+function currentRoomId(s: { activeRoomId: string; roomPlans: RoomPlan[] }) {
+  if (s.roomPlans.some((plan) => plan.id === s.activeRoomId)) return s.activeRoomId;
+  return s.roomPlans[0]?.id ?? "";
 }
 
 export const useExperience = create<ExperienceState>()(
@@ -134,10 +242,15 @@ export const useExperience = create<ExperienceState>()(
       hostReady: false,
       hostLead: null,
       hostArrived: null,
+      hostGreeted: false,
       drivingId: null,
       nearbyCarId: null,
       driveSpeed: 0,
       carPoses: defaultCarPoses(),
+      studioOpen: false,
+      shortlist: [],
+      roomPlans: [defaultRoomPlan()],
+      activeRoomId: "",
       enter: () => set({ phase: "play", px: 0, pz: 23.5, drivingId: null }),
       select: (id) =>
         set({
@@ -231,6 +344,7 @@ export const useExperience = create<ExperienceState>()(
       openHostMenu: () =>
         set({
           hostMenuOpen: true,
+          hostGreeted: true,
           selectedId: "welcome-desk",
           bagOpen: false,
           catalogOpen: false,
@@ -253,6 +367,7 @@ export const useExperience = create<ExperienceState>()(
         }),
       clearHostLead: () => set({ hostLead: null }),
       setHostArrived: (label) => set({ hostArrived: label, hostLead: null }),
+      markHostGreeted: () => set({ hostGreeted: true }),
       setNearbyCar: (id) => {
         if (get().nearbyCarId !== id) set({ nearbyCarId: id });
       },
@@ -293,6 +408,118 @@ export const useExperience = create<ExperienceState>()(
           px: x,
           pz: z,
         })),
+      toggleShortlist: (id) =>
+        set((s) => ({
+          shortlist: s.shortlist.includes(id)
+            ? s.shortlist.filter((item) => item !== id)
+            : [...s.shortlist, id],
+        })),
+      openStudio: () =>
+        set((s) => ({
+          studioOpen: true,
+          catalogOpen: false,
+          bagOpen: false,
+          selectedId: null,
+          hostMenuOpen: false,
+          activeRoomId: currentRoomId(s),
+          roomPlans: s.roomPlans.length ? s.roomPlans : [defaultRoomPlan()],
+        })),
+      closeStudio: () => set({ studioOpen: false }),
+      tryInRoom: (productId) =>
+        set((s) => {
+          const plans = s.roomPlans.length ? s.roomPlans : [defaultRoomPlan()];
+          const activeRoomId = plans.some((plan) => plan.id === s.activeRoomId)
+            ? s.activeRoomId
+            : plans[0].id;
+          const item: RoomItem = { uid: pieceUid(), productId, x: 0, z: 0, rot: 0 };
+          return {
+            shortlist: s.shortlist.includes(productId) ? s.shortlist : [...s.shortlist, productId],
+            roomPlans: plans.map((plan) =>
+              plan.id === activeRoomId ? { ...plan, items: [...plan.items, item] } : plan,
+            ),
+            activeRoomId,
+            studioOpen: true,
+            catalogOpen: false,
+            bagOpen: false,
+            selectedId: null,
+            hostMenuOpen: false,
+          };
+        }),
+      addRoomPlan: () =>
+        set((s) => {
+          const plan = defaultRoomPlan(`Room ${s.roomPlans.length + 1}`);
+          return { roomPlans: [...s.roomPlans, plan], activeRoomId: plan.id };
+        }),
+      removeRoomPlan: (id) =>
+        set((s) => {
+          const roomPlans = s.roomPlans.filter((plan) => plan.id !== id);
+          const next = roomPlans.length ? roomPlans : [defaultRoomPlan()];
+          return {
+            roomPlans: next,
+            activeRoomId: next.some((plan) => plan.id === s.activeRoomId) ? s.activeRoomId : next[0].id,
+          };
+        }),
+      setActiveRoom: (id) => set({ activeRoomId: id }),
+      updateActiveRoom: (patch) =>
+        set((s) => {
+          const id = currentRoomId(s);
+          return {
+            activeRoomId: id,
+            roomPlans: s.roomPlans.map((plan) => {
+              if (plan.id !== id) return plan;
+              const next = { ...plan, ...patch };
+              next.widthIn = clampIn(next.widthIn, 72, 480);
+              next.lengthIn = clampIn(next.lengthIn, 72, 480);
+              next.heightIn = clampIn(next.heightIn, 96, 144);
+              next.doorWidthIn = clampIn(next.doorWidthIn, 28, 48);
+              next.doorOffsetIn = clampIn(next.doorOffsetIn, -240, 240);
+              return next;
+            }),
+          };
+        }),
+      applyRoomPreset: (key) =>
+        set((s) => {
+          const preset = ROOM_PRESETS[key];
+          if (!preset) return {};
+          const id = currentRoomId(s);
+          return {
+            activeRoomId: id,
+            roomPlans: s.roomPlans.map((plan) => (plan.id === id ? { ...plan, ...preset } : plan)),
+          };
+        }),
+      addRoomItem: (productId) =>
+        set((s) => {
+          const id = currentRoomId(s);
+          const item: RoomItem = { uid: pieceUid(), productId, x: 0, z: 0, rot: 0 };
+          return {
+            activeRoomId: id,
+            shortlist: s.shortlist.includes(productId) ? s.shortlist : [...s.shortlist, productId],
+            roomPlans: s.roomPlans.map((plan) =>
+              plan.id === id ? { ...plan, items: [...plan.items, item] } : plan,
+            ),
+          };
+        }),
+      moveRoomItem: (uid, x, z, rot) =>
+        set((s) => ({
+          roomPlans: s.roomPlans.map((plan) =>
+            plan.id !== currentRoomId(s)
+              ? plan
+              : {
+                  ...plan,
+                  items: plan.items.map((item) =>
+                    item.uid === uid ? { ...item, x, z, rot: rot ?? item.rot } : item,
+                  ),
+                },
+          ),
+        })),
+      removeRoomItem: (uid) =>
+        set((s) => ({
+          roomPlans: s.roomPlans.map((plan) =>
+            plan.id !== currentRoomId(s)
+              ? plan
+              : { ...plan, items: plan.items.filter((item) => item.uid !== uid) },
+          ),
+        })),
     }),
     {
       name: "ashley-experience-bag",
@@ -302,14 +529,31 @@ export const useExperience = create<ExperienceState>()(
         camDist: s.camDist,
         coupons: s.coupons,
         muted: s.muted,
+        shortlist: s.shortlist,
+        roomPlans: s.roomPlans,
+        activeRoomId: s.activeRoomId,
       }),
       merge: (persisted, current) => {
         const p = (persisted ?? {}) as Partial<ExperienceState>;
+        const roomPlans = Array.isArray(p.roomPlans)
+          ? p.roomPlans.map(asPlan).filter((plan): plan is RoomPlan => plan !== null)
+          : [];
+        const plans = roomPlans.length ? roomPlans : current.roomPlans;
+        const shortlist = Array.isArray(p.shortlist)
+          ? p.shortlist.filter((id): id is string => typeof id === "string")
+          : [];
+        const activeRoomId = plans.some((plan) => plan.id === p.activeRoomId)
+          ? (p.activeRoomId as string)
+          : plans[0].id;
         return {
           ...current,
           ...p,
           coupons: Array.isArray(p.coupons) ? p.coupons : [],
           bag: p.bag && typeof p.bag === "object" ? p.bag : current.bag,
+          shortlist,
+          roomPlans: plans,
+          activeRoomId,
+          studioOpen: false,
         };
       },
     },
