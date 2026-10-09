@@ -1,6 +1,7 @@
-import { useLayoutEffect, useMemo, useRef } from "react";
+import { useLayoutEffect, useMemo, useRef, type ReactNode } from "react";
 import * as THREE from "three";
 import { useTexture } from "@react-three/drei";
+import { useFrame, type ThreeEvent } from "@react-three/fiber";
 import { geo } from "./geo";
 import { type StoreMats } from "./materials";
 import { FENCES, INTERIOR_WALLS } from "./collision";
@@ -17,7 +18,6 @@ import { assetUrl } from "@/lib/asset-url";
 import { useExperience } from "@/lib/experience-state";
 import { applyPick, hitFrom } from "./picker";
 import { xrStore } from "./xr-store";
-import type { ThreeEvent } from "@react-three/fiber";
 
 function onXrPick(e: ThreeEvent<MouseEvent>) {
   if (!xrStore.getState().session) return;
@@ -32,6 +32,16 @@ function onXrHover(e: ThreeEvent<PointerEvent>) {
 }
 
 const WALL_H = 4.6;
+
+function RockingMount({ children }: { children: ReactNode }) {
+  const ref = useRef<THREE.Group>(null);
+  const t = useRef(0);
+  useFrame((_, dt) => {
+    t.current += dt;
+    if (ref.current) ref.current.rotation.x = Math.sin(t.current * 1.15) * 0.07;
+  });
+  return <group ref={ref}>{children}</group>;
+}
 
 function Wall({
   p,
@@ -735,13 +745,25 @@ export function StoreWorld({ mats }: { mats: StoreMats }) {
             onClick={onXrPick}
             onPointerOver={onXrHover}
           >
-            <ProductPiece
-              kind={product.kind}
-              fabric={product.fabric}
-              mats={mats}
-              profile={product.profile}
-              size={product.profile ? product.size : undefined}
-            />
+            {p.productId === "maverick-rocker" ? (
+              <RockingMount>
+                <ProductPiece
+                  kind={product.kind}
+                  fabric={product.fabric}
+                  mats={mats}
+                  profile={product.profile}
+                  size={product.profile ? product.size : undefined}
+                />
+              </RockingMount>
+            ) : (
+              <ProductPiece
+                kind={product.kind}
+                fabric={product.fabric}
+                mats={mats}
+                profile={product.profile}
+                size={product.profile ? product.size : undefined}
+              />
+            )}
           </group>
         );
       })}
@@ -765,5 +787,7 @@ export function StoreWorld({ mats }: { mats: StoreMats }) {
     </group>
   );
 }
+
+
 
 

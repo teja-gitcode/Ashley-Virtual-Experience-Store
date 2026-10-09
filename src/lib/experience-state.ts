@@ -2,6 +2,7 @@ import { create } from "zustand";
 import { persist } from "zustand/middleware";
 import type { RoomId } from "./catalog";
 import type { HostLead } from "./host";
+import { oppositeWall, type RoomJoin } from "./home-layout";
 import type { DoorWall } from "./room-fit";
 
 const defaultCarPoses = (): Record<string, { x: number; z: number; yaw: number }> => ({
@@ -31,6 +32,8 @@ export type RoomPlan = {
   doorWall: DoorWall;
   doorOffsetIn: number;
   doorWidthIn: number;
+  /** Which side of another room this one is built against. */
+  join?: RoomJoin;
   items: RoomItem[];
 };
 
@@ -82,6 +85,14 @@ function asPlan(value: unknown): RoomPlan | null {
       ? raw.doorWall
       : "s";
   const floor: FloorFinish = raw.floor === "oak" || raw.floor === "tile" || raw.floor === "carpet" ? raw.floor : "carpet";
+  const joined = raw.join;
+  const join: RoomJoin | undefined =
+    joined &&
+    typeof joined === "object" &&
+    typeof joined.to === "string" &&
+    (joined.side === "n" || joined.side === "e" || joined.side === "s" || joined.side === "w")
+      ? { to: joined.to, side: joined.side }
+      : undefined;
   return {
     id: raw.id,
     name: raw.name,
@@ -92,6 +103,7 @@ function asPlan(value: unknown): RoomPlan | null {
     doorWall,
     doorOffsetIn: clampIn(raw.doorOffsetIn ?? 0, -240, 240),
     doorWidthIn: clampIn(raw.doorWidthIn ?? 32, 28, 48),
+    join,
     items,
   };
 }
@@ -192,7 +204,7 @@ type ExperienceState = {
   openStudio: () => void;
   closeStudio: () => void;
   tryInRoom: (productId: string) => void;
-  addRoomPlan: () => void;
+  addRoomPlan: (side?: DoorWall) => void;
   removeRoomPlan: (id: string) => void;
   setActiveRoom: (id: string) => void;
   updateActiveRoom: (patch: Partial<Omit<RoomPlan, "id" | "items">>) => void;
@@ -445,14 +457,33 @@ export const useExperience = create<ExperienceState>()(
             hostMenuOpen: false,
           };
         }),
-      addRoomPlan: () =>
+      addRoomPlan: (side: DoorWall = "e") =>
         set((s) => {
-          const plan = defaultRoomPlan(`Room ${s.roomPlans.length + 1}`);
+          const active = currentRoomId(s);
+          const parent = s.roomPlans.find((plan) => plan.id === active) ?? s.roomPlans[0];
+          const keys = ["living", "dining", "bedroom"] as const;
+          const preset = parent ? ROOM_PRESETS[keys[(s.roomPlans.length - 1) % keys.length]] : undefined;
+          const join = parent ? { to: parent.id, side } : undefined;
+          const plan: RoomPlan = {
+            ...defaultRoomPlan(preset?.name ?? "Living"),
+            ...(preset ?? {}),
+            join,
+            doorWall: join ? oppositeWall(side) : "s",
+            doorOffsetIn: 0,
+          };
           return { roomPlans: [...s.roomPlans, plan], activeRoomId: plan.id };
         }),
       removeRoomPlan: (id) =>
         set((s) => {
-          const roomPlans = s.roomPlans.filter((plan) => plan.id !== id);
+          const removed = s.roomPlans.find((plan) => plan.id === id);
+          const roomPlans = s.roomPlans
+            .filter((plan) => plan.id !== id)
+            .map((plan) => {
+              if (plan.join?.to !== id) return plan;
+              const fallback = removed?.join?.to;
+              if (fallback && fallback !== plan.id) return { ...plan, join: { to: fallback, side: plan.join.side } };
+              return { ...plan, join: undefined };
+            });
           const next = roomPlans.length ? roomPlans : [defaultRoomPlan()];
           return {
             roomPlans: next,
@@ -501,24 +532,19 @@ export const useExperience = create<ExperienceState>()(
         }),
       moveRoomItem: (uid, x, z, rot) =>
         set((s) => ({
-          roomPlans: s.roomPlans.map((plan) =>
-            plan.id !== currentRoomId(s)
-              ? plan
-              : {
-                  ...plan,
-                  items: plan.items.map((item) =>
-                    item.uid === uid ? { ...item, x, z, rot: rot ?? item.rot } : item,
-                  ),
-                },
-          ),
+          roomPlans: s.roomPlans.map((plan) => ({
+            ...plan,
+            items: plan.items.map((item) =>
+              item.uid === uid ? { ...item, x, z, rot: rot ?? item.rot } : item,
+            ),
+          })),
         })),
       removeRoomItem: (uid) =>
         set((s) => ({
-          roomPlans: s.roomPlans.map((plan) =>
-            plan.id !== currentRoomId(s)
-              ? plan
-              : { ...plan, items: plan.items.filter((item) => item.uid !== uid) },
-          ),
+          roomPlans: s.roomPlans.map((plan) => ({
+            ...plan,
+            items: plan.items.filter((item) => item.uid !== uid),
+          })),
         })),
     }),
     {

@@ -21,6 +21,8 @@ export type FitRoom = {
   doorWall: DoorWall;
   doorOffsetIn: number;
   doorWidthIn: number;
+  /** Passages into neighboring rooms, in addition to the front door. */
+  extraDoors?: { wall: DoorWall; offsetIn: number; widthIn: number }[];
 };
 
 export type Aabb = { minX: number; maxX: number; minZ: number; maxZ: number };
@@ -88,16 +90,16 @@ function contains(room: Aabb, piece: Aabb) {
   );
 }
 
-/** 36 in of clear floor in front of the door opening. */
-export function doorPath(room: FitRoom): Aabb {
+/** 36 in of clear floor in front of one opening. */
+export function openingPath(room: FitRoom, wall: DoorWall, offsetIn: number, widthIn: number): Aabb {
   const W = room.widthIn * INCH;
   const L = room.lengthIn * INCH;
-  const dw = Math.max(24, room.doorWidthIn) * INCH;
+  const dw = Math.max(24, widthIn) * INCH;
   const path = 36 * INCH;
-  const along = room.doorWall === "n" || room.doorWall === "s" ? W : L;
+  const along = wall === "n" || wall === "s" ? W : L;
   const maxOff = Math.max(0, along / 2 - dw / 2);
-  const o = Math.max(-maxOff, Math.min(maxOff, room.doorOffsetIn * INCH));
-  switch (room.doorWall) {
+  const o = Math.max(-maxOff, Math.min(maxOff, offsetIn * INCH));
+  switch (wall) {
     case "s":
       return { minX: o - dw / 2, maxX: o + dw / 2, minZ: -L / 2, maxZ: -L / 2 + path };
     case "n":
@@ -107,6 +109,11 @@ export function doorPath(room: FitRoom): Aabb {
     case "e":
       return { minX: W / 2 - path, maxX: W / 2, minZ: o - dw / 2, maxZ: o + dw / 2 };
   }
+}
+
+/** 36 in of clear floor in front of the door opening. */
+export function doorPath(room: FitRoom): Aabb {
+  return openingPath(room, room.doorWall, room.doorOffsetIn, room.doorWidthIn);
 }
 
 function occupiedSqFt(room: FitRoom, items: FitItem[]) {
@@ -134,7 +141,10 @@ function occupiedSqFt(room: FitRoom, items: FitItem[]) {
 
 export function assessRoom(room: FitRoom, items: FitItem[]): FitReport {
   const bounds = roomAabb(room);
-  const door = doorPath(room);
+  const doors = [
+    doorPath(room),
+    ...(room.extraDoors ?? []).map((door) => openingPath(room, door.wall, door.offsetIn, door.widthIn)),
+  ];
   const issues: FitIssue[] = [];
   const pieceSqFt: Record<string, number> = {};
   items.forEach((item, i) => {
@@ -142,7 +152,7 @@ export function assessRoom(room: FitRoom, items: FitItem[]): FitReport {
     const box = pieceAabb(item);
     if (!contains(bounds, box)) issues.push({ uid: item.uid, kind: "outside" });
     if (item.size.h > room.heightIn + 0.5) issues.push({ uid: item.uid, kind: "ceiling" });
-    if (overlaps(box, door)) issues.push({ uid: item.uid, kind: "door" });
+    if (doors.some((door) => overlaps(box, door))) issues.push({ uid: item.uid, kind: "door" });
     for (let j = i + 1; j < items.length; j++) {
       const other = items[j];
       if (overlaps(box, pieceAabb(other))) {

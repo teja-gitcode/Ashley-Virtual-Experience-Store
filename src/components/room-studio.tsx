@@ -1,11 +1,28 @@
-import { Canvas, useThree } from "@react-three/fiber";
+import { Canvas, useFrame, useThree } from "@react-three/fiber";
 import { Html, OrbitControls } from "@react-three/drei";
 import { Camera, Heart, Plus, RotateCw, Trash2, X } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { OrbitControls as OrbitControlsImpl } from "three-stdlib";
 import * as THREE from "three";
+import { resolveMove, unstick, type Rect } from "@/game/collision";
 import { ProductPiece } from "@/game/furniture";
+import { geo } from "@/game/geo";
 import { useStoreMaterials, type StoreMats } from "@/game/materials";
+import {
+  chasePull,
+  fitDoor,
+  homeBounds,
+  homeColliders,
+  layoutHome,
+  roomInteriors,
+  roomOpenings,
+  sharedCover,
+  spanSegments,
+  walkSpawn,
+  wallOnScreenAxis,
+  type RoomOrigin,
+  type RoomRect,
+} from "@/lib/home-layout";
 import {
   PRODUCT_MAP,
   PRODUCTS,
@@ -31,6 +48,17 @@ import {
 import { downloadRoomSheet, renderRoomSheet, type SheetPiece } from "@/lib/room-sheet";
 
 const DOOR_LABEL: Record<DoorWall, string> = { n: "North", s: "South", e: "East", w: "West" };
+
+/** Which wall of the active room sits on that edge of the current view. */
+function sideFromView(camera: THREE.Camera, which: "left" | "right" | "above" | "below"): DoorWall {
+  camera.updateMatrixWorld();
+  const axis = new THREE.Vector3();
+  axis.setFromMatrixColumn(camera.matrixWorld, which === "left" || which === "right" ? 0 : 1);
+  if (which === "left" || which === "below") axis.negate();
+  axis.y = 0;
+  if (axis.lengthSq() < 1e-8) return "e";
+  return wallOnScreenAxis(axis.x, axis.z);
+}
 
 function saveRoomSheet(
   view: { gl: THREE.WebGLRenderer; scene: THREE.Scene; camera: THREE.Camera } | null,
@@ -65,7 +93,9 @@ export function RoomStudio() {
   const plan = plans.find((item) => item.id === activeRoomId) ?? plans[0];
   const [top, setTop] = useState(false);
   const [ceiling, setCeiling] = useState(false);
+  const [walking, setWalking] = useState(false);
   const [selected, setSelected] = useState<string | null>(null);
+  const layout = useMemo(() => layoutHome(plans), [plans]);
   const view = useRef<{ gl: THREE.WebGLRenderer; scene: THREE.Scene; camera: THREE.Camera } | null>(null);
 
   useEffect(() => {
@@ -85,13 +115,25 @@ export function RoomStudio() {
 
   if (!plan) return null;
 
+  const origin = layout.find((room) => room.id === plan.id) ?? layout[0];
+  const linked = plan.join ? fitDoor(plan, origin, plans, layout) : null;
   const fitRoom: FitRoom = {
     widthIn: plan.widthIn,
     lengthIn: plan.lengthIn,
     heightIn: plan.heightIn,
-    doorWall: plan.doorWall,
-    doorOffsetIn: plan.doorOffsetIn,
-    doorWidthIn: plan.doorWidthIn,
+    doorWall: linked?.wall ?? plan.doorWall,
+    doorOffsetIn: linked?.offsetIn ?? plan.doorOffsetIn,
+    doorWidthIn: linked?.widthIn ?? plan.doorWidthIn,
+    extraDoors:
+      linked && linked.wall !== plan.doorWall
+        ? [{ wall: plan.doorWall, offsetIn: plan.doorOffsetIn, widthIn: plan.doorWidthIn }]
+        : roomOpenings(plan, origin, plans, layout)
+            .filter((opening) => opening.wall !== plan.doorWall)
+            .map((opening) => ({
+              wall: opening.wall,
+              offsetIn: opening.center / INCH,
+              widthIn: opening.width / INCH,
+            })),
   };
   const fitItems = plan.items.flatMap((item) => {
     const product = PRODUCT_MAP[item.productId];
@@ -101,6 +143,10 @@ export function RoomStudio() {
   const report = assessRoom(fitRoom, fitItems);
   const bad = new Set(report.issues.map((issue) => issue.uid));
   const saved = PRODUCTS.filter((product) => shortlist.includes(product.id));
+  const addRoomOn = (which: "left" | "right" | "above" | "below") => {
+    const camera = view.current?.camera;
+    useExperience.getState().addRoomPlan(camera ? sideFromView(camera, which) : "e");
+  };
 
   return (
     <div data-ui className="pointer-events-auto absolute inset-0 z-40 flex flex-col bg-navy text-paper">
@@ -110,6 +156,19 @@ export function RoomStudio() {
           <p className="truncate font-display text-lg leading-tight">{plan.name}</p>
         </div>
         <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={() => {
+              setWalking((value) => !value);
+              setTop(false);
+            }}
+            className={cn(
+              "rounded-md px-3 py-2 text-xs font-semibold uppercase tracking-[0.12em]",
+              walking ? "bg-orange text-navy" : "bg-white/10",
+            )}
+          >
+            {walking ? "Stop walking" : "Walk through"}
+          </button>
           <button
             type="button"
             onClick={() => saveRoomSheet(view.current, plan, fitRoom, report)}
@@ -171,18 +230,22 @@ export function RoomStudio() {
               shadow-camera-top={8}
               shadow-camera-bottom={-8}
             />
-            <RoomScene
-              plan={plan}
-              fitRoom={fitRoom}
+            <HomeScene
+              plans={plans}
+              layout={layout}
+              activeId={plan.id}
               bad={bad}
               top={top}
               ceiling={ceiling}
+              walking={walking}
               selected={selected}
               onSelect={setSelected}
             />
           </Canvas>
           <p className="pointer-events-none absolute bottom-3 left-3 right-3 rounded-md bg-navy/75 px-3 py-2 text-xs text-paper md:right-auto">
-            Drag a piece. R rotates the selected one. Snapshot saves the view and a dimensioned plan.
+            {walking
+              ? "First person. WASD to walk, drag to look, scroll to zoom. Hold Shift to run. C switches the camera."
+              : "Drag a piece. R rotates it. Scroll to zoom. The view stays put while you change the size. Add a room on the left, right, above, or below."}
           </p>
         </div>
         <aside className="max-h-[46vh] overflow-auto border-t border-white/10 bg-cream p-4 text-ink md:max-h-none md:w-[22rem] md:border-l md:border-t-0">
@@ -286,16 +349,9 @@ export function RoomStudio() {
               <p className="mt-1 text-xs">Every piece is inside, clear of the door, and under the ceiling.</p>
             )}
           </div>
-          <div className="mt-4 flex items-center justify-between">
-            <p className="text-xs font-semibold uppercase tracking-[0.12em] text-stone">In this room</p>
-            <div className="flex gap-1">
-              <button
-                type="button"
-                onClick={() => useExperience.getState().addRoomPlan()}
-                className="rounded-md border border-line px-2 py-1 text-[11px] font-semibold uppercase tracking-[0.08em]"
-              >
-                New room
-              </button>
+          <div className="mt-4">
+            <div className="flex items-center justify-between">
+              <p className="text-xs font-semibold uppercase tracking-[0.12em] text-stone">Add a room</p>
               {plans.length > 1 ? (
                 <button
                   type="button"
@@ -306,7 +362,20 @@ export function RoomStudio() {
                 </button>
               ) : null}
             </div>
+            <p className="mt-1 text-[11px] text-stone">On the side you see from this view of {plan.name}.</p>
+            <div className="mt-2 grid grid-cols-3 gap-1">
+              <span />
+              <SideButton label="Above" onClick={() => addRoomOn("above")} />
+              <span />
+              <SideButton label="Left" onClick={() => addRoomOn("left")} />
+              <span className="self-center text-center text-[10px] uppercase tracking-[0.08em] text-stone">this room</span>
+              <SideButton label="Right" onClick={() => addRoomOn("right")} />
+              <span />
+              <SideButton label="Below" onClick={() => addRoomOn("below")} />
+              <span />
+            </div>
           </div>
+          <p className="mt-4 text-xs font-semibold uppercase tracking-[0.12em] text-stone">In this room</p>
           {plans.length > 1 ? (
             <div className="mt-2 flex gap-1 overflow-x-auto">
               {plans.map((item) => (
@@ -401,6 +470,18 @@ function issueText(plan: RoomPlan, uid: string, kind: string) {
   return `${name} blocks the door.`;
 }
 
+function SideButton({ label, onClick }: { label: string; onClick: () => void }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="rounded-md border border-line bg-paper px-2 py-2 text-[11px] font-semibold uppercase tracking-[0.08em] text-ink"
+    >
+      {label}
+    </button>
+  );
+}
+
 function DimField({
   label,
   totalIn,
@@ -448,122 +529,166 @@ function DimField({
   );
 }
 
-function RoomScene({
-  plan,
-  fitRoom,
+function HomeScene({
+  plans,
+  layout,
+  activeId,
   bad,
   top,
   ceiling,
+  walking,
   selected,
   onSelect,
 }: {
-  plan: RoomPlan;
-  fitRoom: FitRoom;
+  plans: RoomPlan[];
+  layout: RoomOrigin[];
+  activeId: string;
   bad: Set<string>;
   top: boolean;
   ceiling: boolean;
+  walking: boolean;
   selected: string | null;
   onSelect: (uid: string) => void;
 }) {
   const mats = useStoreMaterials();
   const controls = useRef<OrbitControlsImpl>(null);
-  const width = plan.widthIn * INCH;
-  const length = plan.lengthIn * INCH;
-  const height = plan.heightIn * INCH;
-  const span = Math.max(width, length);
-  const floor = plan.floor === "oak" ? mats.oakFloor : plan.floor === "tile" ? mats.tile : mats.carpet;
+  const bounds = homeBounds(layout);
+  const boxes = useMemo(() => homeColliders(plans, layout) as Rect[], [plans, layout]);
+  const interiors = useMemo(() => roomInteriors(layout, 0.36), [layout]);
+  const ceilings = useMemo(
+    () =>
+      layout.flatMap((origin) => {
+        const room = plans.find((item) => item.id === origin.id);
+        if (!room) return [];
+        return [
+          {
+            minX: origin.x - origin.width / 2,
+            maxX: origin.x + origin.width / 2,
+            minZ: origin.z - origin.length / 2,
+            maxZ: origin.z + origin.length / 2,
+            y: room.heightIn * INCH - 0.22,
+          },
+        ];
+      }),
+    [plans, layout],
+  );
+  useEffect(() => {
+    const hook = window as Window & { __homeLayout?: { id: string; x: number; z: number }[] };
+    hook.__homeLayout = layout.map((room) => ({ id: room.id, x: room.x, z: room.z }));
+  }, [layout]);
+  const wallMat = useMemo(() => {
+    const material = mats.wall.clone();
+    material.side = THREE.DoubleSide;
+    return material;
+  }, [mats.wall]);
+  const root = plans[0];
+  const rootOrigin = layout[0];
+  const spawn = root && rootOrigin ? walkSpawn(root, rootOrigin) : { x: 0, z: 0, yaw: Math.PI };
 
-  const move = (uid: string, x: number, z: number) => {
-    const limitX = width / 2 + 0.5;
-    const limitZ = length / 2 + 0.5;
+  const move = (uid: string, worldX: number, worldZ: number) => {
+    const owner = plans.find((room) => room.items.some((item) => item.uid === uid));
+    const origin = layout.find((room) => room.id === owner?.id);
+    if (!owner || !origin) return;
+    useExperience.getState().setActiveRoom(owner.id);
+    const limitX = origin.width / 2 + 0.35;
+    const limitZ = origin.length / 2 + 0.35;
     useExperience.getState().moveRoomItem(
       uid,
-      Math.max(-limitX, Math.min(limitX, x)),
-      Math.max(-limitZ, Math.min(limitZ, z)),
+      Math.max(-limitX, Math.min(limitX, worldX - origin.x)),
+      Math.max(-limitZ, Math.min(limitZ, worldZ - origin.z)),
     );
   };
   const drop = (uid: string) => {
     const current = useExperience.getState();
-    const room = current.roomPlans.find((item) => item.id === current.activeRoomId) ?? plan;
-    const item = room.items.find((row) => row.uid === uid);
+    const room = current.roomPlans.find((item) => item.items.some((piece) => piece.uid === uid));
+    const item = room?.items.find((row) => row.uid === uid);
     const product = item ? PRODUCT_MAP[item.productId] : undefined;
-    if (!item || !product || !snapsToWall(product)) return;
-    const snapped = snapBackToWall(fitRoom, {
-      uid,
-      x: item.x,
-      z: item.z,
-      rot: item.rot,
-      size: product.size,
-    });
+    const origin = layout.find((entry) => entry.id === room?.id);
+    if (!room || !item || !product || !origin || !snapsToWall(product)) return;
+    const door = fitDoor(room, origin, current.roomPlans, layoutHome(current.roomPlans));
+    const snapped = snapBackToWall(
+      {
+        widthIn: room.widthIn,
+        lengthIn: room.lengthIn,
+        heightIn: room.heightIn,
+        doorWall: door.wall,
+        doorOffsetIn: door.offsetIn,
+        doorWidthIn: door.widthIn,
+      },
+      { uid, x: item.x, z: item.z, rot: item.rot, size: product.size },
+    );
     if (snapped) current.moveRoomItem(uid, snapped.x, snapped.z, snapped.rot);
   };
 
   return (
     <>
-      <CameraRig top={top} span={span} width={width} length={length} height={height} controls={controls} />
-      <OrbitControls
-        ref={controls}
-        enablePan
-        enableRotate={!top}
-        maxPolarAngle={Math.PI / 2.05}
-        minDistance={1.4}
-        maxDistance={span * 3}
-        target={[0, 0.4, 0]}
-      />
-      <DragLayer
-        controls={controls}
-        onSelect={onSelect}
-        onMove={move}
-        onDrop={drop}
-      />
-      <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0, 0]} receiveShadow material={floor}>
-        <planeGeometry args={[width, length]} />
-      </mesh>
-      <RoomGrid width={width} length={length} />
-      <RoomWalls plan={plan} mats={mats} />
-      {ceiling ? (
-        <mesh position={[0, height, 0]} material={mats.ceiling}>
-          <boxGeometry args={[width, 0.06, length]} />
-        </mesh>
+      {walking ? (
+        <HomeWalk spawn={spawn} boxes={boxes} rooms={interiors} ceilings={ceilings} mats={mats} />
       ) : null}
-      <Html position={[0, 0.35, -length / 2 - 0.2]} center>
-        <span className="whitespace-nowrap rounded bg-navy/80 px-2 py-1 text-[11px] text-paper">
-          {formatInches(plan.widthIn)} wide
-        </span>
-      </Html>
-      <Html position={[width / 2 + 0.2, 0.35, 0]} center>
-        <span className="whitespace-nowrap rounded bg-navy/80 px-2 py-1 text-[11px] text-paper">
-          {formatInches(plan.lengthIn)} long
-        </span>
-      </Html>
-      {plan.items.map((item) => {
-        const product = PRODUCT_MAP[item.productId];
-        if (!product) return null;
-        const w = product.size.w * INCH;
-        const d = product.size.d * INCH;
+      <ViewProbe />
+      {walking ? null : (
+        <CameraRig top={top} bounds={bounds} single={plans.length === 1} controls={controls} />
+      )}
+      {walking ? null : (
+        <OrbitControls
+          ref={controls}
+          enablePan
+          enableRotate={!top}
+          maxPolarAngle={Math.PI / 2.05}
+          minDistance={1.4}
+          maxDistance={Math.max(18, bounds.span * 3)}
+        />
+      )}
+      {walking ? null : (
+        <DragLayer controls={controls} onSelect={onSelect} onMove={move} onDrop={drop} />
+      )}
+      {plans.map((room) => {
+        const origin = layout.find((entry) => entry.id === room.id);
+        if (!origin) return null;
+        const active = room.id === activeId;
         return (
-          <group
-            key={item.uid}
-            position={[item.x, 0, item.z]}
-            rotation={[0, item.rot, 0]}
-            userData={{ pieceUid: item.uid }}
-          >
-            <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.02, 0]}>
-              <planeGeometry args={[w, d]} />
-              <meshBasicMaterial
-                color={bad.has(item.uid) ? "#b4332a" : selected === item.uid ? "#d97706" : "#2f6b4f"}
-                transparent
-                opacity={0.38}
-              />
-            </mesh>
-            <ProductPiece
-              kind={product.kind}
-              fabric={product.fabric}
+          <group key={room.id} position={[origin.x, 0, origin.z]}>
+            <RoomShell
+              plan={room}
+              plans={plans}
+              origin={origin}
+              layout={layout}
               mats={mats}
-              profile={product.profile}
-              size={product.size}
-              toScale
+              wallMat={wallMat}
+              ceiling={ceiling && active && !walking}
+              active={active}
+              showLabel={!walking}
             />
+            {room.items.map((item) => {
+              const product = PRODUCT_MAP[item.productId];
+              if (!product) return null;
+              const showFit = active;
+              return (
+                <group
+                  key={item.uid}
+                  position={[item.x, 0, item.z]}
+                  rotation={[0, item.rot, 0]}
+                  userData={{ pieceUid: item.uid }}
+                >
+                  <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.02, 0]}>
+                    <planeGeometry args={[product.size.w * INCH, product.size.d * INCH]} />
+                    <meshBasicMaterial
+                      color={showFit && bad.has(item.uid) ? "#b4332a" : selected === item.uid ? "#d97706" : "#2f6b4f"}
+                      transparent
+                      opacity={0.38}
+                    />
+                  </mesh>
+                  <ProductPiece
+                    kind={product.kind}
+                    fabric={product.fabric}
+                    mats={mats}
+                    profile={product.profile}
+                    size={product.size}
+                    toScale
+                  />
+                </group>
+              );
+            })}
           </group>
         );
       })}
@@ -571,36 +696,393 @@ function RoomScene({
   );
 }
 
+const HOME_WALK = 4.6;
+const HOME_RUN = 7.2;
+const HOME_ZOOM_MIN = 0.65;
+const HOME_ZOOM_MAX = 8;
+const HOME_FOV = 52;
+const HOME_FOV_MIN = 26;
+const HOME_FOV_MAX = 78;
+const HOME_BODY_R = 0.32;
+
+type WalkCeiling = { minX: number; maxX: number; minZ: number; maxZ: number; y: number };
+
+function ceilingCap(x: number, z: number, rooms: WalkCeiling[]) {
+  const inside = rooms.filter(
+    (room) => x >= room.minX - 0.45 && x <= room.maxX + 0.45 && z >= room.minZ - 0.45 && z <= room.maxZ + 0.45,
+  );
+  const pool = inside.length > 0 ? inside : rooms;
+  if (pool.length === 0) return 2.2;
+  let cap = pool[0].y;
+  for (const room of pool) cap = Math.min(cap, room.y);
+  return cap;
+}
+
+function HomeWalk({
+  spawn,
+  boxes,
+  rooms,
+  ceilings,
+  mats,
+}: {
+  spawn: { x: number; z: number; yaw: number };
+  boxes: Rect[];
+  rooms: RoomRect[];
+  ceilings: WalkCeiling[];
+  mats: StoreMats;
+}) {
+  const { camera, scene, gl } = useThree();
+  const yaw = useRef(spawn.yaw);
+  const pitch = useRef(0.18);
+  const dist = useRef(1.6);
+  const fov = useRef(HOME_FOV);
+  const firstPerson = useRef(true);
+  const pos = useRef(new THREE.Vector3(spawn.x, 0, spawn.z));
+  const bodyYaw = useRef(spawn.yaw);
+  const speed = useRef(0);
+  const walkT = useRef(0);
+  const snapped = useRef(false);
+  const group = useRef<THREE.Group>(null);
+  const leftLeg = useRef<THREE.Mesh>(null);
+  const rightLeg = useRef<THREE.Mesh>(null);
+  const leftArm = useRef<THREE.Mesh>(null);
+  const rightArm = useRef<THREE.Mesh>(null);
+  const keys = useRef(new Set<string>());
+  const drag = useRef<{ x: number; y: number } | null>(null);
+  const boxesRef = useRef(boxes);
+  const roomsRef = useRef(rooms);
+  const ceilingsRef = useRef(ceilings);
+  const desired = useRef(new THREE.Vector3());
+  const lookAt = useRef(new THREE.Vector3());
+  const camRay = useRef(new THREE.Raycaster());
+  const camDir = useRef(new THREE.Vector3());
+  boxesRef.current = boxes;
+  roomsRef.current = rooms;
+  ceilingsRef.current = ceilings;
+
+  useEffect(() => {
+    const active = document.activeElement;
+    if (active instanceof HTMLElement) active.blur();
+  }, []);
+
+  useEffect(() => {
+    const cam = camera as THREE.PerspectiveCamera;
+    const previous = cam.fov;
+    cam.fov = HOME_FOV;
+    cam.updateProjectionMatrix();
+    return () => {
+      cam.fov = previous;
+      cam.updateProjectionMatrix();
+    };
+  }, [camera]);
+
+  useEffect(() => {
+    return () => {
+      delete (window as Window & { __homeWalk?: { x: number; z: number; yaw: number } }).__homeWalk;
+    };
+  }, []);
+
+  useEffect(() => {
+    const down = (event: KeyboardEvent) => {
+      if (event.target instanceof HTMLInputElement || event.target instanceof HTMLTextAreaElement) return;
+      if (event.code === "KeyC" && !event.repeat) firstPerson.current = !firstPerson.current;
+      keys.current.add(event.code);
+    };
+    const up = (event: KeyboardEvent) => keys.current.delete(event.code);
+    window.addEventListener("keydown", down);
+    window.addEventListener("keyup", up);
+    return () => {
+      window.removeEventListener("keydown", down);
+      window.removeEventListener("keyup", up);
+      keys.current.clear();
+    };
+  }, []);
+
+  useEffect(() => {
+    const el = gl.domElement;
+    const onDown = (event: PointerEvent) => {
+      if (event.button !== 0) return;
+      drag.current = { x: event.clientX, y: event.clientY };
+    };
+    const onMove = (event: PointerEvent) => {
+      const last = drag.current;
+      if (!last) return;
+      const mx = event.movementX || event.clientX - last.x;
+      const my = event.movementY || event.clientY - last.y;
+      drag.current = { x: event.clientX, y: event.clientY };
+      yaw.current -= mx * 0.005;
+      pitch.current = THREE.MathUtils.clamp(pitch.current + my * 0.0035, 0.04, 0.72);
+    };
+    const onUp = () => {
+      drag.current = null;
+    };
+    const onWheel = (event: WheelEvent) => {
+      event.preventDefault();
+      const raw = event.deltaMode === 1 ? event.deltaY * 16 : event.deltaMode === 2 ? event.deltaY * 400 : event.deltaY;
+      const mag = Math.sign(raw) * Math.min(Math.abs(raw), 90);
+      if (mag === 0) return;
+      if (firstPerson.current) {
+        fov.current = THREE.MathUtils.clamp(fov.current + mag * 0.08, HOME_FOV_MIN, HOME_FOV_MAX);
+      } else {
+        dist.current = THREE.MathUtils.clamp(dist.current + mag * 0.016, HOME_ZOOM_MIN, HOME_ZOOM_MAX);
+      }
+    };
+    el.addEventListener("pointerdown", onDown);
+    el.addEventListener("wheel", onWheel, { passive: false });
+    window.addEventListener("pointermove", onMove);
+    window.addEventListener("pointerup", onUp);
+    return () => {
+      el.removeEventListener("pointerdown", onDown);
+      el.removeEventListener("wheel", onWheel);
+      window.removeEventListener("pointermove", onMove);
+      window.removeEventListener("pointerup", onUp);
+    };
+  }, [gl]);
+
+  useFrame((_, delta) => {
+    const dt = Math.min(delta, 0.1);
+    const yawNow = yaw.current;
+    const fx = -Math.sin(yawNow);
+    const fz = -Math.cos(yawNow);
+    const rx = -fz;
+    const rz = fx;
+    let mx = 0;
+    let mz = 0;
+    const held = keys.current;
+    if (held.has("KeyW") || held.has("ArrowUp")) {
+      mx += fx;
+      mz += fz;
+    }
+    if (held.has("KeyS") || held.has("ArrowDown")) {
+      mx -= fx;
+      mz -= fz;
+    }
+    if (held.has("KeyA") || held.has("ArrowLeft")) {
+      mx -= rx;
+      mz -= rz;
+    }
+    if (held.has("KeyD") || held.has("ArrowRight")) {
+      mx += rx;
+      mz += rz;
+    }
+    const len = Math.hypot(mx, mz);
+    if (len > 1) {
+      mx /= len;
+      mz /= len;
+    }
+    const running = held.has("ShiftLeft") || held.has("ShiftRight");
+    const want = len > 0.05 ? (running ? HOME_RUN : HOME_WALK) : 0;
+    speed.current = THREE.MathUtils.damp(speed.current, want, 8, dt);
+    if (len > 0.05) {
+      const freed = unstick(pos.current.x, pos.current.z, boxesRef.current, HOME_BODY_R);
+      pos.current.x = freed.x;
+      pos.current.z = freed.z;
+      const next = resolveMove(
+        pos.current.x,
+        pos.current.z,
+        (mx / (len || 1)) * speed.current * dt,
+        (mz / (len || 1)) * speed.current * dt,
+        boxesRef.current,
+        HOME_BODY_R,
+      );
+      pos.current.x = next.x;
+      pos.current.z = next.z;
+      bodyYaw.current = THREE.MathUtils.damp(bodyYaw.current, Math.atan2(-mx, -mz), 10, dt);
+    } else {
+      speed.current *= Math.max(0, 1 - dt * 8);
+    }
+
+    const eye = firstPerson.current;
+    if (eye) {
+      desired.current.set(pos.current.x - fx * 0.18, 1.58, pos.current.z - fz * 0.18);
+      lookAt.current.set(pos.current.x + fx * 8, 1.5 - pitch.current * 3.2, pos.current.z + fz * 8);
+    } else {
+      const distNow = dist.current;
+      const cp = Math.cos(pitch.current);
+      const back = chasePull(pos.current.x, pos.current.z, fx, fz, Math.max(0.2, distNow * cp), roomsRef.current);
+      const rise = Math.tan(pitch.current) * 0.7;
+      desired.current.set(pos.current.x - fx * back, 1.55 + back * rise, pos.current.z - fz * back);
+      lookAt.current.set(pos.current.x, 1.28, pos.current.z);
+      camDir.current.copy(desired.current).sub(lookAt.current);
+      const wantLen = camDir.current.length();
+      if (wantLen > 0.25) {
+        camDir.current.multiplyScalar(1 / wantLen);
+        camRay.current.set(lookAt.current, camDir.current);
+        camRay.current.far = wantLen;
+        const hits = camRay.current.intersectObjects(scene.children, true);
+        for (const hit of hits) {
+          let node: THREE.Object3D | null = hit.object;
+          let skip = false;
+          while (node) {
+            if (node === group.current || node.userData.camSkip === true || typeof node.userData.pieceUid === "string") {
+              skip = true;
+              break;
+            }
+            node = node.parent;
+          }
+          if (skip) continue;
+          const ny = hit.normal?.y ?? hit.face?.normal.y ?? 0;
+          if (ny > 0.65) continue;
+          desired.current.copy(lookAt.current).addScaledVector(camDir.current, Math.max(0.42, hit.distance - 0.3));
+          break;
+        }
+      }
+      const cap = ceilingCap(pos.current.x, pos.current.z, ceilingsRef.current);
+      if (desired.current.y > cap) {
+        const fromY = lookAt.current.y;
+        const span = desired.current.y - fromY;
+        if (span > 0.05) desired.current.lerpVectors(lookAt.current, desired.current, (cap - fromY) / span);
+        else desired.current.y = cap;
+      }
+    }
+
+    const cam = camera as THREE.PerspectiveCamera;
+    const nextFov = eye ? fov.current : HOME_FOV;
+    if (Math.abs(cam.fov - nextFov) > 0.05) {
+      cam.fov = nextFov;
+      cam.updateProjectionMatrix();
+    }
+
+    camera.up.set(0, 1, 0);
+    if (!snapped.current) {
+      camera.position.copy(desired.current);
+      snapped.current = true;
+    } else {
+      camera.position.lerp(desired.current, 1 - Math.exp(-dt * (eye ? 14 : 8)));
+    }
+    camera.lookAt(lookAt.current);
+
+    if (group.current) {
+      group.current.visible = !eye;
+      group.current.position.copy(pos.current);
+      group.current.rotation.y = bodyYaw.current + Math.PI;
+    }
+    const stepping = speed.current > 0.4;
+    walkT.current += dt * (stepping ? speed.current * 1.7 : 0);
+    const swing = stepping ? Math.sin(walkT.current) * 0.55 : 0;
+    if (leftLeg.current) leftLeg.current.rotation.x = swing;
+    if (rightLeg.current) rightLeg.current.rotation.x = -swing;
+    if (leftArm.current) leftArm.current.rotation.x = -swing * 0.6;
+    if (rightArm.current) rightArm.current.rotation.x = swing * 0.6;
+
+    const hook = window as Window & {
+      __homeWalk?: { x: number; z: number; yaw: number; zoom: number; eye: boolean };
+    };
+    hook.__homeWalk = {
+      x: pos.current.x,
+      z: pos.current.z,
+      yaw: yawNow,
+      zoom: eye ? fov.current : dist.current,
+      eye,
+    };
+  });
+
+  return (
+    <group ref={group} visible={false} position={[spawn.x, 0, spawn.z]} rotation={[0, spawn.yaw + Math.PI, 0]} userData={{ camSkip: true }}>
+      <mesh geometry={geo.box} position={[0, 1.42, 0]} scale={[0.3, 0.3, 0.3]} material={mats.skin} castShadow />
+      <mesh geometry={geo.box} position={[0, 1.08, 0]} scale={[0.42, 0.48, 0.24]} material={mats.shirt} castShadow />
+      <mesh
+        ref={leftArm}
+        geometry={geo.box}
+        position={[-0.28, 1.08, 0]}
+        scale={[0.11, 0.46, 0.11]}
+        material={mats.shirt}
+        castShadow
+      />
+      <mesh
+        ref={rightArm}
+        geometry={geo.box}
+        position={[0.28, 1.08, 0]}
+        scale={[0.11, 0.46, 0.11]}
+        material={mats.shirt}
+        castShadow
+      />
+      <mesh
+        ref={leftLeg}
+        geometry={geo.box}
+        position={[-0.11, 0.52, 0]}
+        scale={[0.15, 0.58, 0.15]}
+        material={mats.khaki}
+        castShadow
+      />
+      <mesh
+        ref={rightLeg}
+        geometry={geo.box}
+        position={[0.11, 0.52, 0]}
+        scale={[0.15, 0.58, 0.15]}
+        material={mats.khaki}
+        castShadow
+      />
+    </group>
+  );
+}
+
+function ViewProbe() {
+  const right = useRef(new THREE.Vector3());
+  const up = useRef(new THREE.Vector3());
+  useFrame(({ camera }) => {
+    camera.updateMatrixWorld();
+    right.current.setFromMatrixColumn(camera.matrixWorld, 0);
+    up.current.setFromMatrixColumn(camera.matrixWorld, 1);
+    const hook = window as Window & {
+      __roomView?: {
+        x: number;
+        y: number;
+        z: number;
+        rightX: number;
+        rightZ: number;
+        upX: number;
+        upZ: number;
+      };
+    };
+    hook.__roomView = {
+      x: camera.position.x,
+      y: camera.position.y,
+      z: camera.position.z,
+      rightX: right.current.x,
+      rightZ: right.current.z,
+      upX: up.current.x,
+      upZ: up.current.z,
+    };
+  });
+  return null;
+}
+
 function CameraRig({
   top,
-  span,
-  width,
-  length,
-  height,
+  bounds,
+  single,
   controls,
 }: {
   top: boolean;
-  span: number;
-  width: number;
-  length: number;
-  height: number;
+  bounds: { cx: number; cz: number; span: number; minX: number; maxX: number; minZ: number; maxZ: number };
+  single: boolean;
   controls: React.RefObject<OrbitControlsImpl | null>;
 }) {
   const { camera } = useThree();
+  const boundsRef = useRef(bounds);
+  boundsRef.current = bounds;
+  // Size edits change bounds every keystroke. Reframe only when the view mode changes,
+  // so a zoomed-out orbit stays where the user left it.
   useEffect(() => {
+    const frame = boundsRef.current;
     if (top) {
-      camera.up.set(0, 0, 1);
-      camera.position.set(0, span * 1.35, 0.01);
-      camera.lookAt(0, 0, 0);
-    } else {
-      // Stay inside the room. A camera beyond the wall only sees plaster.
+      // Screen right is +X and screen up is −Z, matching the default orbit view.
+      camera.up.set(0, 0, -1);
+      camera.position.set(frame.cx, Math.max(8, frame.span * 1.35), frame.cz);
+      camera.lookAt(frame.cx, 0, frame.cz);
+    } else if (single) {
       camera.up.set(0, 1, 0);
-      camera.position.set(-width / 2 + 0.5, Math.min(2.35, height - 0.25), length / 2 - 0.5);
-      camera.lookAt(0, 0.3, 0);
+      camera.position.set(frame.minX + 0.5, 1.7, frame.maxZ - 0.5);
+      camera.lookAt(frame.cx, 0.3, frame.cz);
+    } else {
+      camera.up.set(0, 1, 0);
+      camera.position.set(frame.cx, Math.max(7, frame.span * 0.9), frame.cz + frame.span * 0.2);
+      camera.lookAt(frame.cx, 0, frame.cz);
     }
-    controls.current?.target.set(0, top ? 0 : 0.4, 0);
+    controls.current?.target.set(frame.cx, top ? 0 : 0.3, frame.cz);
     controls.current?.update();
-  }, [top, span, width, length, height, camera, controls]);
+  }, [top, single, camera, controls]);
   return null;
 }
 
@@ -707,81 +1189,94 @@ function RoomGrid({ width, length }: { width: number; length: number }) {
   );
 }
 
-function RoomWalls({ plan, mats }: { plan: RoomPlan; mats: StoreMats }) {
-  const width = plan.widthIn * INCH;
-  const length = plan.lengthIn * INCH;
+function RoomShell({
+  plan,
+  plans,
+  origin,
+  layout,
+  mats,
+  wallMat,
+  ceiling,
+  active,
+  showLabel,
+}: {
+  plan: RoomPlan;
+  plans: RoomPlan[];
+  origin: RoomOrigin;
+  layout: RoomOrigin[];
+  mats: StoreMats;
+  wallMat: THREE.Material;
+  ceiling: boolean;
+  active: boolean;
+  showLabel: boolean;
+}) {
+  const width = origin.width;
+  const length = origin.length;
   const height = plan.heightIn * INCH;
-  const door = plan.doorWidthIn * INCH;
-  const offset = plan.doorOffsetIn * INCH;
+  const floor = plan.floor === "oak" ? mats.oakFloor : plan.floor === "tile" ? mats.tile : mats.carpet;
+  const openings = roomOpenings(plan, origin, plans, layout);
+  const cover = sharedCover(plan, origin, layout);
+  const gapsFor = (wall: DoorWall) => {
+    const gaps = openings
+      .filter((opening) => opening.wall === wall)
+      .map((opening) => ({ center: opening.center, width: opening.width }));
+    if (cover?.wall === wall) gaps.push({ center: cover.center, width: cover.width });
+    return gaps;
+  };
+
   return (
     <>
-      <SplitWall
-        position={[0, height / 2, -length / 2 - 0.04]}
-        span={width}
-        height={height}
-        gap={plan.doorWall === "s" ? door : 0}
-        gapCenter={plan.doorWall === "s" ? offset : 0}
-        material={mats.wall}
-      />
-      <SplitWall
-        position={[0, height / 2, length / 2 + 0.04]}
-        span={width}
-        height={height}
-        gap={plan.doorWall === "n" ? door : 0}
-        gapCenter={plan.doorWall === "n" ? offset : 0}
-        material={mats.wall}
-      />
-      <SplitWall
-        position={[-width / 2 - 0.04, height / 2, 0]}
-        span={length}
-        height={height}
-        gap={plan.doorWall === "w" ? door : 0}
-        gapCenter={plan.doorWall === "w" ? offset : 0}
-        rotationY={Math.PI / 2}
-        material={mats.wall}
-      />
-      <SplitWall
-        position={[width / 2 + 0.04, height / 2, 0]}
-        span={length}
-        height={height}
-        gap={plan.doorWall === "e" ? door : 0}
-        gapCenter={plan.doorWall === "e" ? offset : 0}
-        rotationY={Math.PI / 2}
-        material={mats.wall}
-      />
+      <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0, 0]} receiveShadow material={floor}>
+        <planeGeometry args={[width, length]} />
+      </mesh>
+      <RoomGrid width={width} length={length} />
+      <WallRun axis="x" position={[0, height / 2, -length / 2 - 0.04]} span={width} height={height} gaps={gapsFor("s")} material={wallMat} />
+      <WallRun axis="x" position={[0, height / 2, length / 2 + 0.04]} span={width} height={height} gaps={gapsFor("n")} material={wallMat} />
+      <WallRun axis="z" position={[-width / 2 - 0.04, height / 2, 0]} span={length} height={height} gaps={gapsFor("w")} material={wallMat} />
+      <WallRun axis="z" position={[width / 2 + 0.04, height / 2, 0]} span={length} height={height} gaps={gapsFor("e")} material={wallMat} />
+      {ceiling ? (
+        <mesh position={[0, height, 0]} material={mats.ceiling}>
+          <boxGeometry args={[width, 0.06, length]} />
+        </mesh>
+      ) : null}
+      {showLabel ? (
+        <Html position={[0, 1.5, 0]} center>
+          <span className={cn("whitespace-nowrap rounded px-2 py-1 text-[11px]", active ? "bg-orange text-navy" : "bg-navy/80 text-paper")}>
+            {plan.name}
+          </span>
+        </Html>
+      ) : null}
     </>
   );
 }
 
-function SplitWall({
+function WallRun({
+  axis,
   position,
   span,
   height,
-  gap,
-  gapCenter,
-  rotationY = 0,
+  gaps,
   material,
 }: {
+  axis: "x" | "z";
   position: [number, number, number];
   span: number;
   height: number;
-  gap: number;
-  gapCenter: number;
-  rotationY?: number;
-  material: StoreMats["wall"];
+  gaps: { center: number; width: number }[];
+  material: THREE.Material;
 }) {
-  const segments =
-    gap > 0.05
-      ? [
-          { center: (-span / 2 + (gapCenter - gap / 2)) / 2, length: gapCenter - gap / 2 - -span / 2 },
-          { center: (gapCenter + gap / 2 + span / 2) / 2, length: span / 2 - (gapCenter + gap / 2) },
-        ].filter((segment) => segment.length > 0.04)
-      : [{ center: 0, length: span }];
+  const parts = spanSegments(span, gaps);
   return (
-    <group position={position} rotation={[0, rotationY, 0]}>
-      {segments.map((segment) => (
-        <mesh key={`${segment.center}:${segment.length}`} position={[segment.center, 0, 0]} material={material} castShadow receiveShadow>
-          <boxGeometry args={[segment.length, height, 0.08]} />
+    <group position={position}>
+      {parts.map((segment) => (
+        <mesh
+          key={`${segment.center}:${segment.length}`}
+          position={axis === "x" ? [segment.center, 0, 0] : [0, 0, segment.center]}
+          material={material}
+          castShadow
+          receiveShadow
+        >
+          <boxGeometry args={axis === "x" ? [segment.length, height, 0.08] : [0.08, height, segment.length]} />
         </mesh>
       ))}
     </group>

@@ -54,7 +54,8 @@ export type FurnitureProfile =
   | "file-cabinet"
   | "bookcase"
   | "swivel-lounge"
-  | "outdoor-ottoman";
+  | "outdoor-ottoman"
+  | "rocker";
 
 export type SizeIn = { w: number; d: number; h: number };
 
@@ -698,6 +699,20 @@ const PRODUCT_DRAFTS: Omit<Product, "size">[] = [
     fabric: "sand",
     profile: "outdoor-ottoman",
   },
+  {
+    id: "maverick-rocker",
+    name: "Maverick Rocker",
+    collection: "Maverick",
+    room: "lobby",
+    price: 349,
+    style: "Classic",
+    finish: "Walnut and charcoal weave",
+    blurb:
+      "A walnut rocker with a charcoal seat, spindle back, and short curved feet. It fits a nursery or a reading corner at home.",
+    kind: "chair",
+    fabric: "charcoal",
+    profile: "rocker",
+  },
 ];
 
 const SIZES: Record<string, SizeIn> = {
@@ -749,6 +764,7 @@ const SIZES: Record<string, SizeIn> = {
   "fortville-bookcase": { w: 32, d: 15, h: 72 },
   "paradise-chair": { w: 31, d: 33, h: 35 },
   "paradise-ottoman": { w: 25, d: 22, h: 18 },
+  "maverick-rocker": { w: 28, d: 36, h: 42 },
 };
 
 export const PRODUCTS: Product[] = PRODUCT_DRAFTS.map((draft) => {
@@ -891,6 +907,8 @@ export const PLACEMENTS: Placement[] = [
   { productId: "paradise-ottoman", x: -9.69, z: -28.7, rot: 0, collideW: 0.635, collideD: 0.559, fresh: true },
   { productId: "paradise-ottoman", x: -4.84, z: -28.7, rot: 0, collideW: 0.635, collideD: 0.559, fresh: true },
   { productId: "paradise-ottoman", x: 0, z: -28.7, rot: 0, collideW: 0.635, collideD: 0.559, fresh: true },
+  // Lobby right side, across the Gerridan table from the Darcy sofa. Front (+Z) points south.
+  { productId: "maverick-rocker", x: 7.4, z: 12.83, rot: Math.PI, collideW: 0.711, collideD: 0.914, fresh: true },
 ];
 
 const ROOM_FILE: Record<RoomId, string> = {

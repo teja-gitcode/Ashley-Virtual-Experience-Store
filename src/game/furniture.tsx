@@ -1,4 +1,5 @@
-import type { Material } from "three";
+import { useEffect, useMemo } from "react";
+import { QuadraticBezierCurve3, TubeGeometry, Vector3, type Material } from "three";
 import { geo } from "./geo";
 import { fabricMat, type StoreMats } from "./materials";
 import type { FurnitureKind, FurnitureProfile, SizeIn } from "@/lib/catalog";
@@ -7,12 +8,15 @@ function Box({
   p,
   s,
   m,
+  rx = 0,
   cast = true,
   receive = true,
 }: {
   p: [number, number, number];
   s: [number, number, number];
   m: Material;
+  /** Rotation about local X, so a Z-long box can follow a rocker arc. */
+  rx?: number;
   cast?: boolean;
   receive?: boolean;
 }) {
@@ -20,6 +24,7 @@ function Box({
     <mesh
       geometry={geo.box}
       position={p}
+      rotation={[rx, 0, 0]}
       scale={s}
       material={m}
       castShadow={cast}
@@ -711,6 +716,10 @@ function ProfilePiece({
       return <SwivelLounge w={w} d={d} h={h} mat={mat} base={mats.oak} trim={mats.charcoal} />;
     case "outdoor-ottoman":
       return <OutdoorOttoman w={w} d={d} h={h} mat={mat} base={mats.oak} trim={mats.charcoal} />;
+    case "rocker":
+      return (
+        <RockerChair w={w} d={d} h={h} mat={mat} wood={mats.darkWood} />
+      );
     default:
       return <Box p={[0, h / 2, 0]} s={[w, h, d]} m={mat} />;
   }
@@ -1190,6 +1199,94 @@ function SwivelLounge({
           <Box p={[0, h * 0.48, 0]} s={[0.1, 0.05, d * 0.58]} m={mat} />
         </group>
       ))}
+    </group>
+  );
+}
+
+/** Height of the rocker centerline. Ends sit at `tip`; the middle dips to `belly`. */
+function rockerCenterY(z: number, half: number, tip: number, belly: number) {
+  const t = Math.min(1, Math.max(0, (z / half + 1) / 2));
+  const u = 1 - t;
+  return u * u * tip + 2 * u * t * belly + t * t * tip;
+}
+
+function RockerChair({
+  w,
+  d,
+  h,
+  mat,
+  wood,
+}: {
+  w: number;
+  d: number;
+  h: number;
+  mat: Material;
+  wood: Material;
+}) {
+  const sideX = w * 0.36;
+  const backZ = -d * 0.32;
+  const frontZ = d * 0.28;
+  const half = d * 0.42;
+  const tip = d * 0.072;
+  const belly = -d * 0.028;
+  const tube = Math.min(0.017, w * 0.026);
+  const seatY = Math.min(0.46, h * 0.43);
+  const crestY = h * 0.97;
+  const armY = seatY + 0.16;
+  const rockerGeo = useMemo(
+    () =>
+      new TubeGeometry(
+        new QuadraticBezierCurve3(new Vector3(0, tip, -half), new Vector3(0, belly, 0), new Vector3(0, tip, half)),
+        28,
+        tube,
+        8,
+        false,
+      ),
+    [half, tip, belly, tube],
+  );
+  useEffect(() => () => rockerGeo.dispose(), [rockerGeo]);
+  const foot = (z: number) => rockerCenterY(z, half, tip, belly) + tube * 0.55;
+  const frontFoot = foot(frontZ);
+  const backFoot = foot(backZ);
+  const legTop = armY;
+  const legH = Math.max(0.12, legTop - frontFoot);
+  const spindleBottom = seatY + 0.1;
+  const spindleTop = crestY - 0.045;
+  const armSpan = frontZ - backZ + 0.04;
+
+  return (
+    <group>
+      {[-1, 1].map((side) => {
+        const x = side * sideX;
+        return (
+          <group key={side}>
+            <mesh geometry={rockerGeo} position={[x, 0, 0]} scale={[0.62, 1, 1]} material={wood} castShadow receiveShadow />
+            <Cyl p={[x, frontFoot + legH * 0.2, frontZ]} s={[0.017, legH * 0.4, 0.017]} m={wood} />
+            <Cyl p={[x, frontFoot + legH * 0.43, frontZ]} s={[0.026, legH * 0.09, 0.026]} m={wood} />
+            <Cyl p={[x, frontFoot + legH * 0.73, frontZ]} s={[0.016, legH * 0.56, 0.016]} m={wood} />
+            <Box p={[x, (backFoot + crestY) / 2, backZ]} s={[0.04, crestY - backFoot, 0.04]} m={wood} />
+            <Box p={[x, frontFoot + 0.11, (frontZ + backZ) / 2]} s={[0.018, 0.016, (frontZ - backZ) * 0.86]} m={wood} />
+            <Box p={[x, seatY - 0.04, (frontZ + backZ) / 2]} s={[0.02, 0.016, (frontZ - backZ) * 0.9]} m={wood} />
+            <Box p={[x, armY, (frontZ + backZ) / 2 + 0.01]} s={[0.052, 0.028, armSpan]} m={wood} />
+          </group>
+        );
+      })}
+      <Box p={[0, frontFoot + 0.11, frontZ]} s={[sideX * 1.9, 0.016, 0.02]} m={wood} />
+      <Box p={[0, backFoot + 0.12, backZ]} s={[sideX * 1.75, 0.016, 0.02]} m={wood} />
+      <Box p={[0, seatY - 0.015, (frontZ + backZ) / 2]} s={[sideX * 2.05, 0.04, frontZ - backZ + 0.02]} m={wood} />
+      <Box p={[0, seatY - 0.02, frontZ + 0.012]} s={[sideX * 1.95, 0.055, 0.028]} m={wood} />
+      <Box p={[0, seatY + 0.03, (frontZ + backZ) / 2 - 0.015]} s={[w * 0.62, 0.05, (frontZ - backZ) * 0.7]} m={mat} />
+      <Box p={[0, seatY + 0.08, backZ]} s={[sideX * 1.7, 0.022, 0.022]} m={wood} />
+      <Box p={[0, crestY, backZ]} s={[sideX * 2.2, 0.04, 0.046]} m={wood} />
+      {[-0.64, -0.32, 0, 0.32, 0.64].map((slot) => (
+        <Box
+          key={slot}
+          p={[slot * (sideX - 0.03), (spindleBottom + spindleTop) / 2, backZ + 0.004]}
+          s={[0.016, Math.max(0.08, spindleTop - spindleBottom), 0.014]}
+          m={wood}
+        />
+      ))}
+      <Box p={[0, seatY + 0.26, backZ + 0.03]} s={[sideX * 1.45, 0.3, 0.048]} m={mat} />
     </group>
   );
 }
